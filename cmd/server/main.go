@@ -1,4 +1,4 @@
-// @title           intercom_http_service API
+﻿// @title           intercom_http_service API
 // @version         1.0
 // @description     A comprehensive intercom backend service with video calling capabilities
 // @termsOfService  http://swagger.io/terms/
@@ -21,11 +21,11 @@ package main
 
 import (
 	"fmt"
-	"intercom_http_service/internal/app/routes"
-	"intercom_http_service/internal/domain/models"
-	"intercom_http_service/internal/infrastructure/config"
-	"intercom_http_service/internal/infrastructure/database"
-	Logger "intercom_http_service/pkg/logger"
+	"intercom_http_service/internal/router"
+	"intercom_http_service/internal/model"
+	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/database"
+	Logger "intercom_http_service/internal/logger"
 	"log"
 	"os"
 	"runtime"
@@ -92,7 +92,7 @@ func main() {
 	ensureAdminExists(db, cfg)
 
 	// 初始化路由
-	r := routes.SetupRouter(db, cfg)
+	r := router.SetupRouter(db, cfg)
 
 	// 使用配置中的端口，而不是直接从环境变量获取
 	port := cfg.ServerPort
@@ -125,14 +125,14 @@ func initDB(cfg *config.Config) (*gorm.DB, error) {
 // autoMigrate 自动迁移所有模型（只添加新列和新表）
 func autoMigrate(db *gorm.DB) error {
 	err := db.AutoMigrate(
-		&models.Admin{},
-		&models.PropertyStaff{},
-		&models.Device{},
-		&models.Resident{},
-		&models.CallRecord{},
-		&models.AccessLog{},
-		&models.EmergencyLog{},
-		&models.SystemLog{},
+		&model.Admin{},
+		&model.PropertyStaff{},
+		&model.Device{},
+		&model.Resident{},
+		&model.CallRecord{},
+		&model.AccessLog{},
+		&model.EmergencyLog{},
+		&model.SystemLog{},
 	)
 
 	if err != nil {
@@ -263,7 +263,7 @@ func dropAndRecreateTables(db *gorm.DB) error {
 // ensureAdminExists 确保系统中有管理员账户
 func ensureAdminExists(db *gorm.DB, cfg *config.Config) {
 	var count int64
-	db.Model(&models.Admin{}).Count(&count)
+	db.Model(&model.Admin{}).Count(&count)
 
 	if count == 0 {
 		// 如果没有管理员，创建默认管理员
@@ -272,7 +272,7 @@ func ensureAdminExists(db *gorm.DB, cfg *config.Config) {
 			log.Fatalf("生成密码哈希失败: %v", err)
 		}
 
-		admin := models.Admin{
+		admin := model.Admin{
 			Username: "admin",
 			Password: string(hashedPassword),
 			Role:     "system_admin",
