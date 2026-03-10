@@ -1,5 +1,5 @@
 #!/bin/bash
-# iLock 数据备份脚本 - 优化版
+# intercom_http_service 数据备份脚本 - 优化版
 
 # 源服务器设置
 SOURCE_HOST="39.108.49.167"
@@ -14,7 +14,7 @@ MYSQL_ROOT_PASSWORD="1090119your"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="${SCRIPT_DIR}/backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="ilock_backup_${TIMESTAMP}"
+BACKUP_NAME="intercom_backup_${TIMESTAMP}"
 
 # 颜色输出函数
 function print_info() {
@@ -41,7 +41,7 @@ function handle_error() {
     rm -rf "$TEMP_DIR"
   fi
   # 重启服务
-  ssh_cmd "cd /root/ilock && docker-compose up -d"
+  ssh_cmd "cd /root/intercom_http_service && docker-compose up -d"
   exit 1
 }
 
@@ -99,48 +99,48 @@ print_info "创建临时工作目录: $TEMP_DIR"
 
 # 检查服务状态并优雅停止
 print_info "检查服务状态..."
-if ! ssh_cmd "cd /root/ilock && docker-compose ps" | grep -q "Up"; then
+if ! ssh_cmd "cd /root/intercom_http_service && docker-compose ps" | grep -q "Up"; then
   print_warning "服务似乎未运行，将尝试启动服务..."
-  ssh_cmd "cd /root/ilock && docker-compose up -d"
+  ssh_cmd "cd /root/intercom_http_service && docker-compose up -d"
   sleep 30
 fi
 
 print_info "优雅停止服务..."
-ssh_cmd "cd /root/ilock && docker-compose stop app" || print_warning "停止应用服务失败，继续备份..."
+ssh_cmd "cd /root/intercom_http_service && docker-compose stop app" || print_warning "停止应用服务失败，继续备份..."
 sleep 5
 
 # 备份MySQL数据
 print_info "备份MySQL数据..."
-if ssh_cmd "cd /root/ilock && docker-compose ps db" | grep -q "Up"; then
+if ssh_cmd "cd /root/intercom_http_service && docker-compose ps db" | grep -q "Up"; then
   # 直接使用数据目录备份，避免密码问题
   print_info "使用数据目录备份MySQL数据..."
-  ssh_cmd "cd /root/ilock && docker-compose stop db"
+  ssh_cmd "cd /root/intercom_http_service && docker-compose stop db"
   sleep 5
-  ssh_cmd "docker run --rm -v ilock_mysql_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/mysql_data.tar.gz .'"
+  ssh_cmd "docker run --rm -v intercom_mysql_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/mysql_data.tar.gz .'"
   scp_from_server "/tmp/mysql_data.tar.gz" "$TEMP_DIR/"
   # 重启数据库
-  ssh_cmd "cd /root/ilock && docker-compose start db"
+  ssh_cmd "cd /root/intercom_http_service && docker-compose start db"
 else
   print_warning "MySQL服务未运行，尝试数据目录备份..."
-  ssh_cmd "docker run --rm -v ilock_mysql_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/mysql_data.tar.gz .'"
+  ssh_cmd "docker run --rm -v intercom_mysql_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/mysql_data.tar.gz .'"
   scp_from_server "/tmp/mysql_data.tar.gz" "$TEMP_DIR/"
 fi
 
 # 备份Redis数据
 print_info "备份Redis数据..."
-if ssh_cmd "cd /root/ilock && docker-compose ps redis" | grep -q "Up"; then
+if ssh_cmd "cd /root/intercom_http_service && docker-compose ps redis" | grep -q "Up"; then
   # 触发Redis数据持久化
-  ssh_cmd "cd /root/ilock && docker-compose exec -T redis redis-cli SAVE"
+  ssh_cmd "cd /root/intercom_http_service && docker-compose exec -T redis redis-cli SAVE"
   sleep 5
 fi
-ssh_cmd "docker run --rm -v ilock_redis_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/redis_data.tar.gz .'"
+ssh_cmd "docker run --rm -v intercom_redis_data:/dbdata:ro -v /tmp:/backup alpine sh -c 'cd /dbdata && tar czf /backup/redis_data.tar.gz .'"
 scp_from_server "/tmp/redis_data.tar.gz" "$TEMP_DIR/"
 
 # 备份MQTT数据和配置
 print_info "备份MQTT数据和配置..."
 # 检查MQTT目录是否存在
-if ssh_cmd "test -d /root/ilock/internal/infrastructure/mqtt && echo 'exists'" | grep -q "exists"; then
-  ssh_cmd "cd /root/ilock && tar czf /tmp/mqtt_backup.tar.gz internal/infrastructure/mqtt/"
+if ssh_cmd "test -d /root/intercom_http_service/internal/infrastructure/mqtt && echo 'exists'" | grep -q "exists"; then
+  ssh_cmd "cd /root/intercom_http_service && tar czf /tmp/mqtt_backup.tar.gz internal/infrastructure/mqtt/"
   scp_from_server "/tmp/mqtt_backup.tar.gz" "$TEMP_DIR/"
 else
   print_warning "MQTT目录不存在，创建默认配置..."
@@ -163,8 +163,8 @@ fi
 
 # 备份环境配置文件
 print_info "备份环境配置文件..."
-scp_from_server "/root/ilock/.env" "$TEMP_DIR/" || print_warning ".env文件不存在，将在迁移时创建默认配置"
-scp_from_server "/root/ilock/docker-compose.yml" "$TEMP_DIR/" || print_warning "docker-compose.yml文件不存在或无法访问"
+scp_from_server "/root/intercom_http_service/.env" "$TEMP_DIR/" || print_warning ".env文件不存在，将在迁移时创建默认配置"
+scp_from_server "/root/intercom_http_service/docker-compose.yml" "$TEMP_DIR/" || print_warning "docker-compose.yml文件不存在或无法访问"
 
 # 创建备份包
 print_info "创建备份包..."
@@ -198,12 +198,12 @@ rm -rf "$TEMP_DIR"
 
 # 重启服务
 print_info "重启服务..."
-ssh_cmd "cd /root/ilock && docker-compose up -d"
+ssh_cmd "cd /root/intercom_http_service && docker-compose up -d"
 
 # 等待服务启动
 print_info "等待服务启动..."
 for i in {1..30}; do
-  if ssh_cmd "cd /root/ilock && docker-compose ps" | grep -q "Up (healthy)"; then
+  if ssh_cmd "cd /root/intercom_http_service && docker-compose ps" | grep -q "Up (healthy)"; then
     print_success "所有服务已就绪！"
     break
   fi

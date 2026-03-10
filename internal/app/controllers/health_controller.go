@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"ilock-http-service/internal/app/middleware"
-	"ilock-http-service/internal/domain/services/container"
+	"intercom_http_service/internal/app/middleware"
+	"intercom_http_service/internal/domain/services/container"
 	"runtime"
 	"time"
 

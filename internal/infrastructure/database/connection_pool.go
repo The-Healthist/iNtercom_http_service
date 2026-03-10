@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/infrastructure/config"
 	"log"
 	"time"
 

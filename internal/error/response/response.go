@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"ilock-http-service/internal/error/code"
+	"intercom_http_service/internal/error/code"
 )
 
 // Response 定义统一的响应格式

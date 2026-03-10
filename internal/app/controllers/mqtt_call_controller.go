@@ -2,11 +2,11 @@ package controllers
 
 import (
 	"fmt"
-	"ilock-http-service/internal/domain/services"
-	"ilock-http-service/internal/domain/services/container"
-	"ilock-http-service/internal/error/code"
-	"ilock-http-service/internal/error/response"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/services"
+	"intercom_http_service/internal/domain/services/container"
+	"intercom_http_service/internal/error/code"
+	"intercom_http_service/internal/error/response"
+	"intercom_http_service/internal/infrastructure/config"
 	"net/http"
 	"time"
 

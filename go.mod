@@ -1,4 +1,4 @@
-module ilock-http-service
+module intercom_http_service
 
 go 1.23.0
 

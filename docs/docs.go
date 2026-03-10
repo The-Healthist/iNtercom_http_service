@@ -4892,7 +4892,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "39.108.49.167:20033",
 	BasePath:         "/api",
 	Schemes:          []string{},
-	Title:            "ILock HTTP Service API",
+	Title:            "intercom_http_service API",
 	Description:      "A comprehensive door access management system with video calling capabilities",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

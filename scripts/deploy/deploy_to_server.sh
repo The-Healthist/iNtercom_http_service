@@ -1,5 +1,5 @@
 #!/bin/bash
-# iLock 服务器部署脚本
+# intercom_http_service 服务器部署脚本
 
 # 版本设置
 VERSION="2.3.0"
@@ -52,15 +52,15 @@ function ssh_cmd() {
 
 function scp_cmd() {
   export SSHPASS="$SSH_PASSWORD"
-  sshpass -e scp -o StrictHostKeyChecking=no -P "$SSH_PORT" "$@" "$SSH_USERNAME@$SSH_HOST:/root/ilock/"
+  sshpass -e scp -o StrictHostKeyChecking=no -P "$SSH_PORT" "$@" "$SSH_USERNAME@$SSH_HOST:/root/intercom_http_service/"
 }
 
 # 创建docker-compose.yml文件
 cat > docker-compose.yml << EOF
 services: 
   app: 
-    image: stonesea/ilock-http-service:$VERSION
-    container_name: ilock_http_service 
+    image: stonesea/intercom-http-service:$VERSION
+    container_name: intercom_http_service 
     restart: always 
     ports: 
       - '20033:20033'
@@ -90,7 +90,7 @@ services:
       redis: 
         condition: service_healthy 
     networks: 
-      - ilock_network 
+      - intercom_network 
     healthcheck: 
       test: ['CMD', 'curl', '-f', 'http://localhost:20033/api/ping']
       interval: 10s 
@@ -100,7 +100,7 @@ services:
  
   db: 
     image: mysql:8.0 
-    container_name: ilock_mysql 
+    container_name: intercom_mysql 
     restart: always 
     ports: 
       - '3310:3306'
@@ -111,7 +111,7 @@ services:
       - MYSQL_DATABASE=\${MYSQL_DATABASE} 
     command: --default-authentication-plugin=mysql_native_password 
     networks: 
-      - ilock_network 
+      - intercom_network 
     healthcheck: 
       test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
       interval: 10s 
@@ -120,14 +120,14 @@ services:
  
   redis: 
     image: redis:7.0-alpine 
-    container_name: ilock_redis 
+    container_name: intercom_redis 
     restart: always 
     ports: 
       - '6380:6379'
     volumes: 
       - redis_data:/data 
     networks: 
-      - ilock_network 
+      - intercom_network 
     healthcheck: 
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s 
@@ -136,7 +136,7 @@ services:
        
   mqtt: 
     image: eclipse-mosquitto:2.0 
-    container_name: ilock_mqtt 
+    container_name: intercom_mqtt 
     restart: always 
     ports: 
       - '1883:1883'
@@ -147,7 +147,7 @@ services:
       - ./mqtt/data:/mosquitto/data 
       - ./mqtt/log:/mosquitto/log 
     networks: 
-      - ilock_network 
+      - intercom_network 
     healthcheck: 
       test: ['CMD', 'mosquitto_sub', '-t', '\$SYS/#', '-C', '1', '-i', 'healthcheck', '-W', '3']
       interval: 10s 
@@ -155,7 +155,7 @@ services:
       retries: 3 
  
 networks: 
-  ilock_network: 
+  intercom_network: 
     driver: bridge 
  
 volumes: 
@@ -217,7 +217,7 @@ scp_cmd docker-compose.yml .env setup_docker_mirror.sh
 
 # 创建MQTT所需目录
 print_info "创建MQTT所需目录..."
-ssh_cmd "cd /root/ilock && mkdir -p mqtt/config mqtt/data mqtt/log"
+ssh_cmd "cd /root/intercom_http_service && mkdir -p mqtt/config mqtt/data mqtt/log"
 
 # 上传MQTT配置文件
 print_info "上传MQTT配置文件..."
@@ -225,27 +225,27 @@ scp_cmd mqtt/config/mosquitto.conf mqtt/config/
 
 # 配置Docker镜像加速
 print_info "配置Docker镜像加速..."
-ssh_cmd "cd /root/ilock && chmod +x setup_docker_mirror.sh && ./setup_docker_mirror.sh"
+ssh_cmd "cd /root/intercom_http_service && chmod +x setup_docker_mirror.sh && ./setup_docker_mirror.sh"
 
 # 停止现有服务
 print_info "停止现有服务..."
-ssh_cmd "cd /root/ilock && docker-compose down"
+ssh_cmd "cd /root/intercom_http_service && docker-compose down"
 
 # 拉取新镜像
 print_info "拉取新镜像..."
-ssh_cmd "cd /root/ilock && docker-compose pull"
+ssh_cmd "cd /root/intercom_http_service && docker-compose pull"
 
 # 启动服务
 print_info "启动服务..."
-ssh_cmd "cd /root/ilock && docker-compose up -d"
+ssh_cmd "cd /root/intercom_http_service && docker-compose up -d"
 
 # 等待服务就绪
 print_info "等待服务就绪..."
-ssh_cmd "cd /root/ilock && for i in {1..30}; do if docker-compose ps | grep -q 'Up (healthy)'; then echo '所有服务已就绪！'; break; fi; if [ \$i -eq 30 ]; then echo '服务启动超时'; docker-compose logs; exit 1; fi; echo '等待服务就绪... (尝试 '\$i'/30)'; sleep 2; done"
+ssh_cmd "cd /root/intercom_http_service && for i in {1..30}; do if docker-compose ps | grep -q 'Up (healthy)'; then echo '所有服务已就绪！'; break; fi; if [ \$i -eq 30 ]; then echo '服务启动超时'; docker-compose logs; exit 1; fi; echo '等待服务就绪... (尝试 '\$i'/30)'; sleep 2; done"
 
 # 检查服务状态
 print_info "检查服务状态..."
-ssh_cmd "cd /root/ilock && docker-compose ps"
+ssh_cmd "cd /root/intercom_http_service && docker-compose ps"
 
 # 清理临时文件
 rm -f setup_docker_mirror.sh docker-compose.yml
@@ -253,4 +253,4 @@ rm -rf mqtt
 
 print_success "部署完成！"
 print_info "服务状态："
-ssh_cmd "cd /root/ilock && docker-compose ps" 
+ssh_cmd "cd /root/intercom_http_service && docker-compose ps" 

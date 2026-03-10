@@ -2,7 +2,7 @@
     "swagger": "2.0",
     "info": {
         "description": "A comprehensive door access management system with video calling capabilities",
-        "title": "ILock HTTP Service API",
+        "title": "intercom_http_service API",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",

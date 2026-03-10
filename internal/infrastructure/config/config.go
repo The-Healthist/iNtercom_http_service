@@ -103,10 +103,10 @@ func LoadConfig() *Config {
 		RedisPort: getEnv(prefix+"REDIS_PORT", getEnv("REDIS_PORT", "6380")),
 		RedisDB:   getEnvAsInt("REDIS_DB", 0),
 
-		// Aliyun RTC config
-		AliyunAccessKey: getEnvRequired("ALIYUN_ACCESS_KEY"),
-		AliyunRTCAppID:  getEnvRequired("ALIYUN_RTC_APP_ID"),
-		AliyunRTCRegion: getEnvRequired("ALIYUN_RTC_REGION"),
+		// Aliyun RTC config（启用腾讯云 RTC 时可留空）
+		AliyunAccessKey: getEnv("ALIYUN_ACCESS_KEY", ""),
+		AliyunRTCAppID:  getEnv("ALIYUN_RTC_APP_ID", ""),
+		AliyunRTCRegion: getEnv("ALIYUN_RTC_REGION", "cn-hangzhou"),
 
 		// Tencent Cloud RTC config
 		TencentSDKAppID:   tencentAppID,
@@ -115,7 +115,7 @@ func LoadConfig() *Config {
 
 		// MQTT配置
 		MQTTBrokerURL:  getEnv("MQTT_BROKER_URL", "tcp://localhost:1883"),
-		MQTTClientID:   getEnv("MQTT_CLIENT_ID", "ilock_server"),
+		MQTTClientID:   getEnv("MQTT_CLIENT_ID", "intercom_server"),
 		MQTTUsername:   getEnv("MQTT_USERNAME", ""),
 		MQTTPassword:   getEnv("MQTT_PASSWORD", ""),
 		MQTTQoS:        getEnvAsInt("MQTT_QOS", 1),
@@ -124,7 +124,7 @@ func LoadConfig() *Config {
 		MQTTCACertPath: getEnv("MQTT_CA_CERT_PATH", ""),
 
 		// JWT Config
-		JWTSecretKey: getEnv("JWT_SECRET_KEY", "ilock-secret-key-change-in-production"),
+		JWTSecretKey: getEnv("JWT_SECRET_KEY", "intercom-secret-key-change-in-production"),
 
 		// Admin Config
 		DefaultAdminPassword: getEnvRequired("DEFAULT_ADMIN_PASSWORD"),

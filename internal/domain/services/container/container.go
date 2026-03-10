@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"ilock-http-service/internal/domain/services"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/services"
+	"intercom_http_service/internal/infrastructure/config"
 
 	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"

@@ -1,4 +1,4 @@
-# ILock HTTP Service 错误处理规范
+# intercom_http_service 错误处理规范
 
 ## 1. 错误码设计
 
@@ -96,7 +96,7 @@
 ### 成功响应
 
 ```go
-import "ilock-http-service/internal/error/response"
+import "intercom_http_service/internal/error/response"
 
 func (c *Controller) HandleRequest(ctx *gin.Context) {
     // 业务逻辑...
@@ -112,8 +112,8 @@ func (c *Controller) HandleRequest(ctx *gin.Context) {
 
 ```go
 import (
-    "ilock-http-service/internal/error/code"
-    "ilock-http-service/internal/error/response"
+    "intercom_http_service/internal/error/code"
+    "intercom_http_service/internal/error/response"
 )
 
 func (c *Controller) HandleRequest(ctx *gin.Context) {

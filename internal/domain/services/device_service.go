@@ -2,8 +2,8 @@ package services
 
 import (
 	"errors"
-	"ilock-http-service/internal/domain/models"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
 
 	"gorm.io/gorm"
 )

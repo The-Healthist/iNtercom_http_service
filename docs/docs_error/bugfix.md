@@ -1,8 +1,8 @@
-# ILock HTTP Service 错误处理方案
+# intercom_http_service 错误处理方案
 
 ## 1. 问题背景
 
-在当前的 ILock HTTP Service 项目中，错误处理存在以下问题：
+在当前的 intercom_http_service 项目中，错误处理存在以下问题：
 
 1. 错误码不统一，不同模块使用不同的错误返回格式
 2. 缺少错误堆栈信息，导致问题定位困难
@@ -17,8 +17,8 @@
 采用统一的错误码格式：`SCMMM`
 
 - **S**: 服务标识(1-9)
-  - `1`: ILock HTTP Service
-  - `2`: ILock MQTT Service
+    - `1`: intercom_http_service
+    - `2`: intercom MQTT Service
   - `3`: 其他服务
 - **C**: 模块标识(0-9)
   - `0`: 通用模块
@@ -52,7 +52,7 @@
 {
   "code": 100101,
   "message": "用户未找到",
-  "reference": "https://github.com/username/ILock_http_service/blob/master/docs/errors.md",
+    "reference": "https://github.com/username/intercom_http_service/blob/master/docs/errors.md",
   "data": null
 }
 ```
@@ -197,7 +197,7 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/marmotedu/errors"
     
-    "github.com/username/ILock_http_service/internal/pkg/code"
+    "github.com/username/intercom_http_service/internal/pkg/code"
 )
 
 // Response 定义统一的响应格式
@@ -215,7 +215,7 @@ func WriteResponse(c *gin.Context, err error, data interface{}) {
         c.JSON(coder.HTTPStatus(), Response{
             Code:      coder.Code(),
             Message:   coder.String(),
-            Reference: "https://github.com/username/ILock_http_service/blob/master/docs/errors.md",
+            Reference: "https://github.com/username/intercom_http_service/blob/master/docs/errors.md",
             Data:      data,
         })
         return
@@ -241,9 +241,9 @@ import (
     "github.com/marmotedu/errors"
     "github.com/marmotedu/log"
     
-    "github.com/username/ILock_http_service/internal/pkg/code"
-    "github.com/username/ILock_http_service/internal/pkg/response"
-    "github.com/username/ILock_http_service/internal/service"
+    "github.com/username/intercom_http_service/internal/pkg/code"
+    "github.com/username/intercom_http_service/internal/pkg/response"
+    "github.com/username/intercom_http_service/internal/service"
 )
 
 // GetDevice 获取设备信息
@@ -278,9 +278,9 @@ import (
     "github.com/marmotedu/errors"
     "github.com/marmotedu/log"
     
-    "github.com/username/ILock_http_service/internal/model"
-    "github.com/username/ILock_http_service/internal/pkg/code"
-    "github.com/username/ILock_http_service/internal/store"
+    "github.com/username/intercom_http_service/internal/model"
+    "github.com/username/intercom_http_service/internal/pkg/code"
+    "github.com/username/intercom_http_service/internal/store"
 )
 
 // GetDevice 获取设备信息
@@ -337,7 +337,7 @@ go generate ./...
 ```go
 // 在迁移脚本中使用错误处理
 func backupDatabase() error {
-    cmd := exec.Command("mysqldump", "-u", "root", "-p"+password, "ilock")
+    cmd := exec.Command("mysqldump", "-u", "root", "-p"+password, "intercom")
     output, err := cmd.CombinedOutput()
     if err != nil {
         return errors.WrapC(err, code.ErrBackupFailed, "数据库备份失败: %s", string(output))

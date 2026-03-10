@@ -1,7 +1,7 @@
 {
-    "base_url": "http://localhost:8080/api",
+    "base_url": "http://localhost:20033/api",
     "admin_user": "admin",
     "admin_pass": "admin123",
     "concurrency": 50,
     "requests": 1000
-} 
+}

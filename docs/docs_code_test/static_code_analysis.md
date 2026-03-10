@@ -1,4 +1,4 @@
-# ILock HTTP服务静态代码检查指南
+# intercom_http_service 静态代码检查指南
 
 ## 简介
 
@@ -37,7 +37,7 @@ golangci-lint version
 
 ## 配置文件
 
-在项目根目录创建`.golangci.yaml`配置文件。下面是ILock HTTP服务项目的配置示例，包含详细注释：
+在项目根目录创建`.golangci.yaml`配置文件。下面是 intercom_http_service 项目的配置示例，包含详细注释：
 
 ```yaml
 # 运行配置
@@ -68,7 +68,7 @@ linters-settings:
   # gci控制导入包的顺序和分组
   gci:
     # 将以指定前缀开头的包放在第三方包后面
-    local-prefixes: ilock-http-service
+    local-prefixes: intercom_http_service
     
   # godox检查代码中的TODO/FIXME等标记
   godox:
@@ -82,7 +82,7 @@ linters-settings:
   # goimports检查和格式化导入语句
   goimports:
     # 设置本地包前缀，用于区分标准库、第三方库和本地库
-    local-prefixes: ilock-http-service
+    local-prefixes: intercom_http_service
     
   # gomodguard限制使用的Go模块
   gomodguard:
@@ -275,7 +275,7 @@ var bad_name int //nolint:golint // 历史原因，不能修改变量名
 ```
 > 添加原因有助于其他开发者理解为什么忽略此检查
 
-## ILock项目中的静态代码检查规范
+## intercom_http_service 项目中的静态代码检查规范
 
 ### 检查流程
 

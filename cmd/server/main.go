@@ -1,6 +1,6 @@
-// @title           ILock HTTP Service API
+// @title           intercom_http_service API
 // @version         1.0
-// @description     A comprehensive door access management system with video calling capabilities
+// @description     A comprehensive intercom backend service with video calling capabilities
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -21,11 +21,11 @@ package main
 
 import (
 	"fmt"
-	"ilock-http-service/internal/app/routes"
-	"ilock-http-service/internal/domain/models"
-	"ilock-http-service/internal/infrastructure/config"
-	"ilock-http-service/internal/infrastructure/database"
-	Logger "ilock-http-service/pkg/logger"
+	"intercom_http_service/internal/app/routes"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
+	"intercom_http_service/internal/infrastructure/database"
+	Logger "intercom_http_service/pkg/logger"
 	"log"
 	"os"
 	"runtime"

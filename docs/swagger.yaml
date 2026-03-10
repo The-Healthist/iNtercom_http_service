@@ -912,7 +912,7 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
   termsOfService: http://swagger.io/terms/
-  title: ILock HTTP Service API
+  title: intercom_http_service API
   version: "1.0"
 paths:
   /admins:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# iLock 镜像构建和推送脚本
+# intercom_http_service 镜像构建和推送脚本
 
 # 版本设置
 VERSION="2.3.0"
@@ -75,9 +75,9 @@ docker buildx inspect --bootstrap
 # 构建并推送多平台镜像
 print_info "Building and pushing multi-platform image for version $VERSION..."
 docker buildx build --platform linux/amd64 \
-  -t "$DOCKER_USERNAME/ilock-http-service:$VERSION" \
-  -t "$DOCKER_USERNAME/ilock-http-service:latest" \
+  -t "$DOCKER_USERNAME/intercom-http-service:$VERSION" \
+  -t "$DOCKER_USERNAME/intercom-http-service:latest" \
   --push .
 
 print_success "镜像构建和推送完成！"
-print_info "镜像地址: $DOCKER_USERNAME/ilock-http-service:$VERSION" 
+print_info "镜像地址: $DOCKER_USERNAME/intercom-http-service:$VERSION" 

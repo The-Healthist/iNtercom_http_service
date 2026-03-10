@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"ilock-http-service/internal/error/code"
-	"ilock-http-service/internal/error/response"
+	"intercom_http_service/internal/error/code"
+	"intercom_http_service/internal/error/response"
 	"sync"
 	"time"
 

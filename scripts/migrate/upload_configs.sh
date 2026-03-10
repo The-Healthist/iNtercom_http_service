@@ -1,5 +1,5 @@
 #!/bin/bash
-# iLock 配置文件上传脚本
+# intercom_http_service 配置文件上传脚本
 
 # 目标服务器设置
 TARGET_HOST="117.72.193.54"
@@ -51,12 +51,12 @@ function ssh_cmd() {
 
 function scp_cmd() {
   export SSHPASS="$TARGET_PASSWORD"
-  sshpass -e scp -o StrictHostKeyChecking=no -P "$TARGET_PORT" "$@" "$TARGET_USERNAME@$TARGET_HOST:/root/ilock/"
+  sshpass -e scp -o StrictHostKeyChecking=no -P "$TARGET_PORT" "$@" "$TARGET_USERNAME@$TARGET_HOST:/root/intercom_http_service/"
 }
 
 function scp_dir_cmd() {
   export SSHPASS="$TARGET_PASSWORD"
-  sshpass -e scp -o StrictHostKeyChecking=no -r -P "$TARGET_PORT" "$@" "$TARGET_USERNAME@$TARGET_HOST:/root/ilock/"
+  sshpass -e scp -o StrictHostKeyChecking=no -r -P "$TARGET_PORT" "$@" "$TARGET_USERNAME@$TARGET_HOST:/root/intercom_http_service/"
 }
 
 # 获取脚本所在目录的项目根目录
@@ -68,7 +68,7 @@ print_info "开始上传配置文件到目标服务器: $TARGET_HOST"
 
 # 创建目标服务器目录结构
 print_info "创建目标服务器目录结构..."
-ssh_cmd "mkdir -p /root/ilock/internal/infrastructure/mqtt/{config,data,log,certs} /root/ilock/logs"
+ssh_cmd "mkdir -p /root/intercom_http_service/internal/infrastructure/mqtt/{config,data,log,certs} /root/intercom_http_service/logs"
 
 # 1. 上传docker-compose.yml文件
 print_info "上传docker-compose.yml文件..."
@@ -95,7 +95,7 @@ ENV_TYPE=SERVER
 
 # 数据库配置
 MYSQL_ROOT_PASSWORD=1090119your
-MYSQL_DATABASE=ilock
+MYSQL_DATABASE=intercom
 
 # 阿里云配置
 ALIYUN_ACCESS_KEY=your_access_key
@@ -110,12 +110,12 @@ MQTT_BROKER_URL=tcp://mqtt:1883
 EOF
   
   scp_cmd "/tmp/example.env"
-  ssh_cmd "mv /root/ilock/example.env /root/ilock/.env"
+  ssh_cmd "mv /root/intercom_http_service/example.env /root/intercom_http_service/.env"
   rm -f "/tmp/example.env"
   
   print_warning "已创建示例.env文件，请登录服务器修改配置:"
   print_info "ssh root@$TARGET_HOST"
-  print_info "vi /root/ilock/.env"
+  print_info "vi /root/intercom_http_service/.env"
 fi
 
 # 3. 上传MQTT配置文件
@@ -129,16 +129,16 @@ fi
 
 # 4. 设置正确的权限
 print_info "设置文件权限..."
-ssh_cmd "chmod 644 /root/ilock/docker-compose.yml"
-ssh_cmd "chmod 600 /root/ilock/.env"
-ssh_cmd "chmod -R 755 /root/ilock/internal/infrastructure/mqtt/ 2>/dev/null || true"
-ssh_cmd "chmod 644 /root/ilock/internal/infrastructure/mqtt/config/mosquitto.conf 2>/dev/null || true"
+ssh_cmd "chmod 644 /root/intercom_http_service/docker-compose.yml"
+ssh_cmd "chmod 600 /root/intercom_http_service/.env"
+ssh_cmd "chmod -R 755 /root/intercom_http_service/internal/infrastructure/mqtt/ 2>/dev/null || true"
+ssh_cmd "chmod 644 /root/intercom_http_service/internal/infrastructure/mqtt/config/mosquitto.conf 2>/dev/null || true"
 
 # 验证上传的文件
 print_info "验证上传的文件..."
 print_info "目标服务器文件列表:"
-ssh_cmd "ls -la /root/ilock/"
-ssh_cmd "ls -la /root/ilock/internal/infrastructure/mqtt/config/ 2>/dev/null || echo 'MQTT配置目录不存在'"
+ssh_cmd "ls -la /root/intercom_http_service/"
+ssh_cmd "ls -la /root/intercom_http_service/internal/infrastructure/mqtt/config/ 2>/dev/null || echo 'MQTT配置目录不存在'"
 
 print_success "配置文件上传完成！"
 print_info "接下来可以执行迁移脚本:"

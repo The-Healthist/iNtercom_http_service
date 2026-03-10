@@ -2,11 +2,14 @@ package services
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"ilock-http-service/internal/infrastructure/config"
-	"ilock-http-service/internal/domain/models"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +45,7 @@ type MQTTCallService struct {
 	Client          mqtt.Client
 	IsConnected     bool
 	connectedMutex  sync.RWMutex // 保护IsConnected字段的读写
+	connectMutex    sync.Mutex   // 保护连接操作，避免并发连接
 	CallManager     *models.CallManager
 	TopicHandlers   map[string]mqtt.MessageHandler
 	CallRecordMutex sync.Mutex   // 用于保护通话记录创建
@@ -169,6 +173,11 @@ func NewMQTTCallService(db *gorm.DB, cfg *config.Config, rtcService InterfaceTen
 	// 设置主题处理程序
 	service.setupTopicHandlers()
 
+	// 主动连接 MQTT broker
+	if err := service.Connect(); err != nil {
+		log.Printf("[MQTT] 初始化时连接 broker 失败: %v，将在首次发布时重试", err)
+	}
+
 	// 启动会话清理定时任务
 	go service.startSessionCleanupTask()
 
@@ -212,16 +221,16 @@ func (s *MQTTCallService) setupMQTTClient() {
 		// 如果提供了CA证书路径，则加载证书
 		if s.Config.MQTTCACertPath != "" {
 			log.Printf("[MQTT] 使用CA证书: %s", s.Config.MQTTCACertPath)
-			// 在生产环境中，应该加载和验证CA证书
-			// certpool := x509.NewCertPool()
-			// pemCerts, err := ioutil.ReadFile(s.Config.MQTTCACertPath)
-			// if err == nil {
-			//     certpool.AppendCertsFromPEM(pemCerts)
-			//     tlsConfig.RootCAs = certpool
-			//     tlsConfig.InsecureSkipVerify = false
-			// } else {
-			//     log.Printf("[MQTT] 加载CA证书失败: %v", err)
-			// }
+			certpool := x509.NewCertPool()
+			pemCerts, err := os.ReadFile(s.Config.MQTTCACertPath)
+			if err == nil {
+				certpool.AppendCertsFromPEM(pemCerts)
+				tlsConfig.RootCAs = certpool
+				tlsConfig.InsecureSkipVerify = false
+				log.Println("[MQTT] CA证书加载成功")
+			} else {
+				log.Printf("[MQTT] 加载CA证书失败: %v，将使用InsecureSkipVerify", err)
+			}
 		}
 
 		opts.SetTLSConfig(tlsConfig)
@@ -270,9 +279,9 @@ func (s *MQTTCallService) setupTopicHandlers() {
 func (s *MQTTCallService) Connect() error {
 	log.Printf("[MQTT] 正在连接到 %s...", s.Config.MQTTBrokerURL)
 
-	// 加锁，确保同一时间只有一个连接尝试
-	s.PublishMutex.Lock()
-	defer s.PublishMutex.Unlock()
+	// 使用独立的连接锁，避免与 publishMessage 的 PublishMutex 死锁
+	s.connectMutex.Lock()
+	defer s.connectMutex.Unlock()
 
 	// 如果已连接，直接返回
 	s.connectedMutex.RLock()
@@ -1415,10 +1424,30 @@ func (s *MQTTCallService) createCallRecord(callID, deviceID, residentID, status 
 	s.CallRecordMutex.Lock()
 	defer s.CallRecordMutex.Unlock()
 
-	// 在实际实现中，这里应该将通话记录保存到数据库
-	// 这里只是示例，实际使用时需要替换成真实的数据库操作
 	log.Printf("[MQTT] 创建通话记录: ID=%s, 设备=%s, 住户=%s, 状态=%s",
 		callID, deviceID, residentID, status)
+
+	devID, err := strconv.ParseUint(deviceID, 10, 64)
+	if err != nil {
+		log.Printf("[MQTT] 解析设备ID失败: %v", err)
+		return
+	}
+	resID, err := strconv.ParseUint(residentID, 10, 64)
+	if err != nil {
+		log.Printf("[MQTT] 解析住户ID失败: %v", err)
+		return
+	}
+
+	record := models.CallRecord{
+		CallID:     callID,
+		DeviceID:   uint(devID),
+		ResidentID: uint(resID),
+		CallStatus: models.CallStatus(status),
+		Timestamp:  time.Now(),
+	}
+	if err := s.DB.Create(&record).Error; err != nil {
+		log.Printf("[MQTT] 保存通话记录失败: %v", err)
+	}
 }
 
 // updateCallRecord 更新通话记录
@@ -1426,9 +1455,28 @@ func (s *MQTTCallService) updateCallRecord(callID, status, reason string) {
 	s.CallRecordMutex.Lock()
 	defer s.CallRecordMutex.Unlock()
 
-	// 在实际实现中，这里应该更新数据库中的通话记录
-	// 这里只是示例，实际使用时需要替换成真实的数据库操作
 	log.Printf("[MQTT] 更新通话记录: ID=%s, 状态=%s, 原因=%s", callID, status, reason)
+
+	updates := map[string]interface{}{
+		"call_status": status,
+	}
+
+	// 如果是终态（挂断/结束），计算通话时长
+	if status == "caller_hangup" || status == "callee_hangup" || status == "system_ended" {
+		var record models.CallRecord
+		if err := s.DB.Where("call_id = ?", callID).First(&record).Error; err == nil {
+			duration := int(time.Since(record.Timestamp).Seconds())
+			updates["duration"] = duration
+		}
+	}
+	// 如果是接听，更新状态为 answered
+	if status == "callee_answered" {
+		updates["call_status"] = string(models.CallStatusAnswered)
+	}
+
+	if err := s.DB.Model(&models.CallRecord{}).Where("call_id = ?", callID).Updates(updates).Error; err != nil {
+		log.Printf("[MQTT] 更新通话记录失败: %v", err)
+	}
 }
 
 // PublishDeviceStatus 发布设备状态

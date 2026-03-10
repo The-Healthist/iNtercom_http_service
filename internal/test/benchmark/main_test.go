@@ -1,14 +1,21 @@
+//go:build integration
+
 package benchmark
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 )
 
-// 测试配置
+// TestConfig 测试配置
 type TestConfig struct {
 	BaseURL     string `json:"base_url"`
 	AdminUser   string `json:"admin_user"`
@@ -17,13 +24,13 @@ type TestConfig struct {
 	Requests    int    `json:"requests"`
 }
 
-// 登录请求
+// LoginRequest 登录请求
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// 登录响应
+// LoginResponse 登录响应
 type LoginResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -46,10 +53,18 @@ func TestMain(m *testing.M) {
 	}
 
 	// 获取认证令牌
-	if err := getAuthToken(); err != nil {
+	token, err := getAuthToken()
+	if err != nil {
+		// 连接被拒绝说明服务器未启动，跳过而非失败
+		var netErr *net.OpError
+		if errors.As(err, &netErr) {
+			fmt.Printf("服务器不可用，跳过集成测试: %v\n", err)
+			os.Exit(0)
+		}
 		fmt.Printf("获取认证令牌失败: %v\n", err)
 		os.Exit(1)
 	}
+	authToken = token
 
 	// 运行测试
 	os.Exit(m.Run())
@@ -59,15 +74,15 @@ func TestMain(m *testing.M) {
 func loadConfig() error {
 	// 默认配置
 	config = TestConfig{
-		BaseURL:     "http://localhost:8080/api",
+		BaseURL:     "http://localhost:20033/api",
 		AdminUser:   "admin",
 		AdminPass:   "admin123",
 		Concurrency: 10,
 		Requests:    100,
 	}
 
-	// 尝试从文件加载配置
-	data, err := ioutil.ReadFile("test_config.json")
+	// 尝试从文件加载配置，文件不存在时沿用默认值
+	data, err := os.ReadFile("test_config.json")
 	if err == nil {
 		if err := json.Unmarshal(data, &config); err != nil {
 			return fmt.Errorf("解析配置文件失败: %v", err)
@@ -77,25 +92,38 @@ func loadConfig() error {
 	return nil
 }
 
-// getAuthToken 获取认证令牌
-func getAuthToken() error {
-	benchmark := NewAPIBenchmark(config.BaseURL, 1, 1, "")
-
-	loginReq := LoginRequest{
+// getAuthToken 发起真实登录请求，返回解析后的 JWT token
+func getAuthToken() (string, error) {
+	body, err := json.Marshal(LoginRequest{
 		Username: config.AdminUser,
 		Password: config.AdminPass,
+	})
+	if err != nil {
+		return "", fmt.Errorf("序列化请求失败: %v", err)
 	}
 
-	result := benchmark.RunPOST("/auth/login", loginReq)
-	if result.FailureCount > 0 {
-		return fmt.Errorf("登录失败: %v", result.Errors[0])
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(config.BaseURL+"/auth/login", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("登录请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应失败: %v", err)
 	}
 
-	// 解析响应获取令牌
-	// 这里简化处理，实际应该从响应体中解析
-	authToken = "your_auth_token_here" // 实际项目中应从响应中获取
+	var loginResp LoginResponse
+	if err := json.Unmarshal(respBody, &loginResp); err != nil {
+		return "", fmt.Errorf("解析响应失败: %v", err)
+	}
 
-	return nil
+	if loginResp.Data.Token == "" {
+		return "", fmt.Errorf("登录失败 (code=%d): %s", loginResp.Code, loginResp.Message)
+	}
+
+	return loginResp.Data.Token, nil
 }
 
 // TestDeviceList 测试设备列表接口

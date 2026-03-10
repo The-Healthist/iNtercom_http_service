@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"ilock-http-service/internal/infrastructure/config"
-	"ilock-http-service/internal/domain/models"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
 	"time"
 
 	"github.com/go-redis/redis/v8"

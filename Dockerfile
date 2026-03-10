@@ -1,48 +1,38 @@
-# Build code
-FROM golang:1.21.0-alpine AS builder
+# Build stage
+FROM docker.1ms.run/golang:1.23.0-alpine AS builder
 
 # 设置Go环境变量
 ENV GO111MODULE=on \
-    GOPROXY=https://goproxy.cn,direct \
     CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
 
-# 添加版本信息
 LABEL version="2.3.0" \
-      description="ILock HTTP Service with MQTT Call Support" \
-      maintainer="Stone Sea"
+    description="intercom_http_service" \
+    maintainer="Stone Sea"
 
 WORKDIR /app
 
-# Copy go.mod and go.sum
-COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
-
-# Copy source code
+# 复制全部源码（含 vendor 目录），无需网络下载依赖
 COPY . .
 
-# Build application with optimizations
-RUN go build -ldflags="-s -w" -o main ./cmd/server
+# 使用 vendor 模式构建，零网络依赖
+RUN go build -mod=vendor -ldflags="-s -w" -o main ./cmd/server
 
-# Run release
-FROM alpine:latest
+# Final stage
+FROM docker.1ms.run/alpine:latest
 
 WORKDIR /app
 
-# 添加版本信息到最终镜像
 LABEL version="2.3.0" \
-      description="ILock HTTP Service with MQTT Call Support" \
-      maintainer="Stone Sea"
+    description="intercom_http_service" \
+    maintainer="Stone Sea"
 
-# 安装必要的运行时依赖
-RUN apk --no-cache add \
-    ca-certificates \
-    tzdata \
-    curl \
-    && rm -rf /var/cache/apk/*
+# 从 builder 复制 TLS 证书（golang:alpine 已预装 ca-certificates）
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# 使用 UTC 时区，无需 tzdata 包
+ENV TZ=UTC
 
 # 创建目录结构
 RUN mkdir -p /app/cmd/server /app/logs /app/docs
@@ -57,8 +47,9 @@ RUN chmod +x /app/cmd/server/main
 EXPOSE 20033
 
 # 更全面的健康检查
+# wget 是 alpine busybox 内置的，无需额外安装
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:20033/api/health || exit 1
+    CMD wget -qO- http://localhost:20033/api/ping || exit 1
 
 # 使用重构后的入口点
 ENTRYPOINT ["/app/cmd/server/main"] 

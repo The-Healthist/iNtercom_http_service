@@ -2,7 +2,7 @@ package services
 
 import (
 	"fmt"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/infrastructure/config"
 	"time"
 
 	"github.com/tencentyun/tls-sig-api-v2-golang/tencentyun"

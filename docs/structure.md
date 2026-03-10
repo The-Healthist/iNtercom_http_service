@@ -1,11 +1,11 @@
-# ILock HTTP Service 项目结构
+# intercom_http_service 项目结构
 
-本文档介绍了 ILock HTTP Service 项目的文件目录结构。
+本文档介绍了 intercom_http_service（对讲机后端服务）的文件目录结构。
 
 ## 目录结构概览
 
 ```
-ilock-http-service/
+intercom_http_service/
 ├── cmd/                    # 应用程序入口点
 │   └── server/             # HTTP 服务入口
 │       └── main.go         # 主程序入口
@@ -108,6 +108,6 @@ ilock-http-service/
 
 ## 导入路径约定
 
-- 内部包: `ilock-http-service/internal/...`
-- 公共包: `ilock-http-service/pkg/...`
-- 主程序: `ilock-http-service/cmd/...` 
+- 内部包: `intercom_http_service/internal/...`
+- 公共包: `intercom_http_service/pkg/...`
+- 主程序: `intercom_http_service/cmd/...` 

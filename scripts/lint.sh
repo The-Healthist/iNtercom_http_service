@@ -8,7 +8,7 @@ NC='\033[0m' # No Color
 
 # 打印标题
 echo -e "${YELLOW}===================================================${NC}"
-echo -e "${YELLOW}         ILock HTTP服务静态代码检查                 ${NC}"
+echo -e "${YELLOW}     intercom_http_service 对讲机后端服务静态代码检查     ${NC}"
 echo -e "${YELLOW}===================================================${NC}"
 
 # 检查golangci-lint是否安装

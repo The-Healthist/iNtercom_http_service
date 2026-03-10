@@ -1,13 +1,14 @@
 services:
   app:
-    image: stonesea/ilock-http-service:2.3.0
-    container_name: ilock_http_service
+    image: stonesea/intercom-http-service:2.3.0
+    container_name: intercom_http_service
     restart: always
     ports:
-      - '20033:20033'
+      - '20033:8080'
     volumes:
       - ./logs:/app/logs
       - ./.env:/app/.env
+      - ./internal/infrastructure/mqtt/certs:/mosquitto/certs
     environment:
       - ENV_TYPE=SERVER
       - ALIYUN_ACCESS_KEY=${ALIYUN_ACCESS_KEY}
@@ -24,18 +25,20 @@ services:
       - SERVER_DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - SERVER_DB_NAME=${MYSQL_DATABASE}
       - SERVER_DB_PORT=3306
-      - MQTT_BROKER_URL=tcp://mqtt:1883
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-tcp://mqtt:1883}
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      - MQTT_SSL_ENABLED=${MQTT_SSL_ENABLED:-false}
+      - MQTT_CA_CERT_PATH=${MQTT_CA_CERT_PATH:-}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mqtt:
-        condition: service_healthy
     networks:
-      - ilock_network
+      - intercom_network
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:20033/api/health']
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/api/ping']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -43,7 +46,7 @@ services:
 
   db:
     image: mysql:8.0
-    container_name: ilock_mysql
+    container_name: intercom_mysql
     restart: always
     ports:
       - '3310:3306'
@@ -57,7 +60,7 @@ services:
       - --max_connections=1000
       - --innodb_buffer_pool_size=1G
     networks:
-      - ilock_network
+      - intercom_network
     healthcheck:
       test:
         ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-p${MYSQL_ROOT_PASSWORD}']
@@ -68,7 +71,7 @@ services:
 
   redis:
     image: redis:7.0-alpine
-    container_name: ilock_redis
+    container_name: intercom_redis
     restart: always
     ports:
       - '6380:6379'
@@ -76,7 +79,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     networks:
-      - ilock_network
+      - intercom_network
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -86,7 +89,7 @@ services:
 
   mqtt:
     image: eclipse-mosquitto:2.0
-    container_name: ilock_mqtt
+    container_name: intercom_mqtt
     restart: always
     ports:
       - '1884:1883'
@@ -98,7 +101,7 @@ services:
       - ./internal/infrastructure/mqtt/log:/mosquitto/log
       - ./internal/infrastructure/mqtt/certs:/mosquitto/certs
     networks:
-      - ilock_network
+      - intercom_network
     healthcheck:
       test:
         [
@@ -119,11 +122,11 @@ services:
       start_period: 10s
 
 networks:
-  ilock_network:
+  intercom_network:
     driver: bridge
 
 volumes:
   mysql_data:
-    name: ilock_mysql_data
+    name: intercom_mysql_data
   redis_data:
-    name: ilock_redis_data
+    name: intercom_redis_data

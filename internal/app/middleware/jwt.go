@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"ilock-http-service/internal/domain/services"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/services"
+	"intercom_http_service/internal/infrastructure/config"
 	"net/http"
 	"strings"
 

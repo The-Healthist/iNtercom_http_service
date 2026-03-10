@@ -3,8 +3,8 @@ package services
 import (
 	"errors"
 	"fmt"
-	"ilock-http-service/internal/domain/models"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -50,7 +50,7 @@ type JWTClaims struct {
 func NewJWTService(cfg *config.Config, db *gorm.DB) InterfaceJWTService {
 	return &JWTService{
 		secretKey: cfg.JWTSecretKey,
-		issuer:    "ilock-http-service",
+		issuer:    "intercom_http_service",
 		DB:        db,
 	}
 }

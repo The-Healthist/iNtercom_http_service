@@ -1,11 +1,11 @@
 package controllers
 
 import (
-	"ilock-http-service/internal/domain/models"
-	"ilock-http-service/internal/domain/services"
-	"ilock-http-service/internal/domain/services/container"
-	"ilock-http-service/internal/error/code"
-	"ilock-http-service/internal/error/response"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/domain/services"
+	"intercom_http_service/internal/domain/services/container"
+	"intercom_http_service/internal/error/code"
+	"intercom_http_service/internal/error/response"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"

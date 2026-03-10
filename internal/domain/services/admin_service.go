@@ -3,8 +3,8 @@ package services
 import (
 	"errors"
 	"fmt"
-	"ilock-http-service/internal/domain/models"
-	"ilock-http-service/internal/infrastructure/config"
+	"intercom_http_service/internal/domain/models"
+	"intercom_http_service/internal/infrastructure/config"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"

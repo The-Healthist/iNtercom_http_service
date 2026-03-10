@@ -4,7 +4,7 @@
 
 ### 1. MQTT服务器配置
 
-ILock系统提供了两种MQTT连接选项：
+intercom_http_service 提供了两种 MQTT 连接选项：
 
 #### 1.1 本地MQTT服务器（开发环境）
 - **地址**: localhost
@@ -22,18 +22,18 @@ ILock系统提供了两种MQTT连接选项：
 
 为了测试系统通信，您可以创建三个MQTTX客户端连接，模拟三个角色：
 
-#### 2.1 ILock服务器（服务端）
+#### 2.1 intercom_http_service 服务器（服务端）
 ```
-名称: ILock Server
+名称: intercom_http_service Server
 主机: localhost (本地开发) 或 pe0f0116.ala.cn-hangzhou.emqxsl.cn (云端)
 端口: 1883 (本地) 或 8883 (云端)
-客户端ID: ilock_server
+客户端ID: intercom_server
 主题订阅: mqtt_call/#
 ```
 
 #### 2.2 Resident客户端（住户）
 ```
-名称: ILock Resident
+名称: intercom Resident
 主机: localhost (本地开发) 或 pe0f0116.ala.cn-hangzhou.emqxsl.cn (云端)
 端口: 1883 (本地) 或 8883 (云端)
 客户端ID: resident_[唯一ID]
@@ -45,7 +45,7 @@ ILock系统提供了两种MQTT连接选项：
 
 #### 2.3 Device客户端（设备）
 ```
-名称: ILock Device
+名称: intercom Device
 主机: localhost (本地开发) 或 pe0f0116.ala.cn-hangzhou.emqxsl.cn (云端)
 端口: 1883 (本地) 或 8883 (云端)
 客户端ID: device_[唯一ID]
@@ -57,7 +57,7 @@ ILock系统提供了两种MQTT连接选项：
 ### 3. 通信测试流程
 
 1. 首先启动本地MQTT服务（如果使用本地开发环境）
-2. 运行ILock后端服务
+2. 运行 intercom_http_service 对讲机后端服务
 3. 使用MQTTX连接MQTT服务器，创建三个客户端
 4. 通过API或MQTTX客户端向`mqtt_call/incoming`主题发送消息，测试通信流程
 

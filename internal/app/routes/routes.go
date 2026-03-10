@@ -1,11 +1,11 @@
 package routes
 
 import (
-	_ "ilock-http-service/docs"
-	"ilock-http-service/internal/app/controllers"
-	"ilock-http-service/internal/app/middleware"
-	"ilock-http-service/internal/domain/services/container"
-	"ilock-http-service/internal/infrastructure/config"
+	_ "intercom_http_service/docs"
+	"intercom_http_service/internal/app/controllers"
+	"intercom_http_service/internal/app/middleware"
+	"intercom_http_service/internal/domain/services/container"
+	"intercom_http_service/internal/infrastructure/config"
 	"time"
 
 	"github.com/gin-gonic/gin"
