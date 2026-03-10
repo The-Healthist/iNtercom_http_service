@@ -2,9 +2,9 @@
 
 import (
 	"fmt"
-	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/errcode"
+	"intercom_http_service/internal/service"
 	"net/http"
 	"time"
 

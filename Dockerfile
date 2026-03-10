@@ -44,12 +44,12 @@ COPY --from=builder /app/docs /app/docs
 # Set executable permissions
 RUN chmod +x /app/cmd/server/main
 
-EXPOSE 20033
+EXPOSE 8080
 
 # 更全面的健康检查
 # wget 是 alpine busybox 内置的，无需额外安装
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget -qO- http://localhost:20033/api/ping || exit 1
+    CMD wget -qO- http://localhost:8080/api/ping || exit 1
 
 # 使用重构后的入口点
 ENTRYPOINT ["/app/cmd/server/main"] 

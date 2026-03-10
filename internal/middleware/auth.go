@@ -1,8 +1,8 @@
 ﻿package middleware
 
 import (
-	"intercom_http_service/internal/service"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/service"
 	"net/http"
 	"strings"
 

@@ -1,31 +1,12 @@
-﻿// @title           intercom_http_service API
-// @version         1.0
-// @description     A comprehensive intercom backend service with video calling capabilities
-// @termsOfService  http://swagger.io/terms/
-
-// @contact.name   API Support
-// @contact.url    http://www.yourcompany.com/support
-// @contact.email  support@yourcompany.com
-
-// @license.name  Apache 2.0
-// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
-
-// @host      39.108.49.167:20033
-// @BasePath  /api
-
-// @securityDefinitions.apikey  BearerAuth
-// @in                          header
-// @name                        Authorization
-// @description                 Enter the token with the `Bearer: ` prefix
-package main
+﻿package main
 
 import (
 	"fmt"
-	"intercom_http_service/internal/router"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
 	"intercom_http_service/internal/database"
 	Logger "intercom_http_service/internal/logger"
+	"intercom_http_service/internal/model"
+	"intercom_http_service/internal/router"
 	"log"
 	"os"
 	"runtime"

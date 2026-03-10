@@ -1,92 +1,188 @@
-# GitHub Copilot Instructions for intercom_http_service
+﻿# GitHub Copilot Instructions for intercom_http_service
 
 ## 项目背景
 
-这是一个基于 Go 的对讲机后端服务项目，正式项目名为 intercom_http_service，采用分层架构，核心目录包括：
+这是一个基于 Go 的**智能社区门禁对讲系统**后端服务，模块名为 `intercom_http_service`，采用扁平化分层结构。
 
-- `cmd/server`: 服务入口
-- `internal/app`: 控制器、中间件、路由
-- `internal/domain`: 领域模型与业务服务
-- `internal/infrastructure`: 配置、数据库、MQTT 等基础设施
-- `pkg`: 通用工具与日志组件
-- `docs`: API、设计和运维文档
+系统服务四类客户端：
+
+- **Web管理后台**：物业管理员操作，需 JWT 认证（`role=admin`）
+- **门禁设备端**：嵌入式硬件，通过 HTTP 发起呼叫/上报状态，通过 MQTT 接收下行消息
+- **居民App端**：接听通话、查看记录（当前待完善）
+- **物业员工App端**：处理告警、查看分配设备（当前待完善）
+
+### 当前目录结构
+
+```
+cmd/server/          # 服务入口 main.go
+internal/
+  config/            # 配置加载（Config 结构体 + 单例）
+  database/          # GORM MySQL 连接池
+  errcode/           # 统一错误码 + HTTP 响应工具
+  handler/           # HTTP 控制器（对应各业务模块）
+  logger/            # Zap 日志封装
+  middleware/        # JWT 认证、限流、响应缓存
+  model/             # GORM 数据模型
+  mqtt/              # MQTT 证书与配置文件（无 Go 代码）
+  router/            # Gin 路由注册
+  service/           # 业务逻辑层 + ServiceContainer 依赖注入
+  test/              # 基准测试
+  utils/             # 通用工具（hash、compress、sign、random）
+docs/                # API 文档、设计文档
+```
+
+### 核心数据层级关系
+
+```
+Building（楼号）
+  └── Household（户号）
+        ├── Resident（居民）
+        └── Device（门禁设备）
+              ├── PropertyStaff（物业员工，多对多）
+              ├── CallRecord（通话记录）
+              └── EmergencyLog（紧急事件日志）
+```
+
+---
 
 ## 代码生成与修改原则
 
-当你为本仓库生成或修改代码时，请遵守以下规则：
-
-1. 始终优先保持当前分层结构，不要把控制器、服务、基础设施逻辑混在一起。
-2. 变更应尽量小且聚焦，不要无关重构。
+1. 始终保持当前扁平化结构：`handler` / `service` / `model` / `errcode` 各司其职，不要混合。
+2. 变更尽量小且聚焦，不要做无关重构。
 3. 保持 Go 风格一致：命名清晰、职责单一、错误处理明确。
-4. 优先兼容当前已有配置加载方式、环境变量命名方式和启动流程。
-5. 如果修改配置相关逻辑，必须同时考虑 `LOCAL_` / `SERVER_` 两类环境前缀。
-6. 涉及数据库、Redis、MQTT、RTC、JWT 的配置项时，优先沿用现有 `Config` 结构体集中管理。
+4. 优先兼容现有配置加载方式、环境变量命名和启动流程。
+5. 修改配置相关逻辑时，必须同时考虑 `LOCAL_` / `SERVER_` 两类环境前缀。
+6. 涉及数据库、Redis、MQTT、RTC、JWT 的配置项时，沿用现有 `Config` 结构体集中管理。
 7. 不要随意移除 `panic` 型必填配置校验，除非需求明确要求改为可恢复错误。
 8. 新增环境变量时：
-   - 优先放入 `internal/infrastructure/config/config.go`
-   - 为非必须项提供合理默认值
-   - 为必须项使用必填校验
+   - 优先放入 `internal/config/config.go`
+   - 为非必须项提供合理默认值，为必须项使用必填校验
    - 命名风格与现有字段保持一致
-9. 如果修改接口或配置行为，请同步考虑文档更新需求。
+9. 修改接口或配置行为时，同步考虑 `docs/` 下文档的更新需求。
+
+---
+
+## 各层职责说明
+
+### handler/（控制器层）
+
+- 只负责请求解析、参数校验、调用 service、返回响应
+- 使用 `errcode.Response*` 系列函数统一格式化响应
+- 不包含任何业务逻辑或数据库操作
+
+### service/（业务逻辑层）
+
+- 所有服务通过 `ServiceContainer` 统一管理依赖
+- `container.go` 在 `service` 包内，不单独成子包
+- 新增服务时在 `ServiceContainer` 中注册，并提供 `Get*Service()` 方法
+
+### model/（数据模型层）
+
+- 包名为 `model`（不是 `models`）
+- 所有 GORM 模型嵌入 `BaseModel`（含 `id`、`created_at`、`updated_at`）
+- 密码字段统一加 `json:"-"` 防止序列化泄露
+
+### errcode/（错误码与响应层）
+
+- 包名为 `errcode`
+- 包含：`code.go`（错误码常量）、`message.go`（中文消息映射）、`response.go`（HTTP 响应工具）
+- `response.go` 内直接引用同包符号，不加 `errcode.` 前缀
+
+### middleware/（中间件层）
+
+- `auth.go`：JWT 认证（原 jwt.go）
+- `cache.go`：响应缓存（Redis）
+- `rate_limiter.go`：IP 维度 + 路径维度双重限流
+
+---
 
 ## 配置模块特别说明
 
-配置文件位于 `internal/infrastructure/config/config.go`。
+配置文件位于 `internal/config/config.go`。
 
-该模块的职责：
-
-- 从环境变量加载运行配置
-- 根据 `ENV_TYPE` 切换 `LOCAL_` 或 `SERVER_` 前缀
-- 统一管理数据库、Redis、RTC、MQTT、JWT、默认管理员密码等配置
-- 通过单例方式暴露 `GetConfig()`
+- 从环境变量加载，根据 `ENV_TYPE` 切换 `LOCAL_` / `SERVER_` 前缀
+- 统一管理数据库、Redis、RTC（阿里云 + 腾讯云）、MQTT、JWT、默认管理员密码等
+- 通过 `sync.Once` 单例暴露 `GetConfig()`
 - 提供 `GetDSN()` 和 `GetRedisAddr()` 等派生方法
 
-### 当前配置设计约定
+### 配置约定
 
-1. `ENV_TYPE` 仅按 `LOCAL` 和 `SERVER` 两种模式处理。
-2. 数据库配置项是必填项。
-3. 阿里云 RTC 配置当前被视为必填项。
-4. 腾讯云 RTC 配置通过开关控制是否启用。
-5. MQTT 配置大多为可选项，并带默认值。
-6. `JWTSecretKey` 当前允许使用默认值，但生产环境代码应更倾向显式配置。
-7. `DefaultAdminPassword` 是必填项。
+| 配置项               | 必填性                                  |
+| -------------------- | --------------------------------------- |
+| 数据库配置           | 必填，缺失则 panic                      |
+| 阿里云 RTC           | 必填                                    |
+| 腾讯云 TRTC          | 可选，通过 `TencentRTCEnabled` 开关控制 |
+| MQTT                 | 可选，带合理默认值                      |
+| JWT Secret           | 允许使用默认值，生产环境应显式配置      |
+| DefaultAdminPassword | 必填                                    |
 
-### 修改配置模块时的 Copilot 行为要求
+修改 `config.go` 时：
 
-当你修改 `config.go` 或相关初始化逻辑时，请：
+- 保持 `LoadConfig()`、`GetConfig()`、`GetDSN()`、`GetRedisAddr()` 调用签名不变
+- 复用现有辅助函数：`getEnv()`、`getEnvAsInt()`、`getEnvAsBool()`、`getEnvRequired()`
 
-- 保持 `Config` 结构体字段语义稳定
-- 不要破坏 `LoadConfig()`、`GetConfig()`、`GetDSN()`、`GetRedisAddr()` 的现有调用方式
-- 保留 `sync.Once` 单例初始化模式，除非用户明确要求改造
-- 优先复用现有辅助函数：
-  - `getEnv()`
-  - `getEnvAsInt()`
-  - `getEnvAsBool()`
-  - `getEnvRequired()`
-- 如果新增解析函数，风格应与现有辅助函数一致
-- 如果发现配置键名、默认值、环境前缀或必填逻辑存在问题，先做最小修复，不做大范围结构改造
+---
+
+## 路由与权限说明
+
+| 路由组                       | 认证要求         | 限流     |
+| ---------------------------- | ---------------- | -------- |
+| `/api/ping`、`/api/health/*` | 无               | 10 req/s |
+| `/api/auth/login`            | 无               | 10 req/s |
+| `/api/rtc/*`、`/api/trtc/*`  | 无               | 5 req/s  |
+| `/api/mqtt/*`                | 无               | 20 req/s |
+| `/api/device/status`         | 无（设备心跳）   | 10 req/s |
+| 其余 `/api/*`                | JWT `role=admin` | 30 req/s |
+
+新增路由时，在 `internal/router/router.go` 的对应分组下注册。公开路由（设备/居民端）放 `registerPublicRoutes`，管理员路由放 `registerAuthenticatedRoutes`。
+
+---
+
+## 当前业务模块完成度
+
+| 模块                   | 状态   | 说明                         |
+| ---------------------- | ------ | ---------------------------- |
+| 管理员（Admin）        | 完成   | CRUD + 分页搜索              |
+| 楼号（Building）       | 完成   | CRUD + 设备/户号关联查询     |
+| 户号（Household）      | 完成   | CRUD + 设备绑定/居民查询     |
+| 设备（Device）         | 完成   | CRUD + 心跳上报 + 关联管理   |
+| 居民（Resident）       | 完成   | CRUD（管理员视角）           |
+| 物业员工（Staff）      | 完成   | CRUD + 设备批量绑定          |
+| 通话记录（CallRecord） | 完成   | 查询 + 统计 + 质量反馈       |
+| MQTT 通话（MQTTCall）  | 完成   | 发起/接听/挂断/会话管理      |
+| 阿里云 RTC             | 完成   | Token 生成 + 发起通话        |
+| 腾讯云 TRTC            | 完成   | UserSig 生成 + 发起通话      |
+| 紧急情况（Emergency）  | 完成   | 告警触发 + 联系人 + 全员通知 |
+| 健康检查（Health）     | 完成   | ping + 系统状态 + 缓存统计   |
+| 居民端登录             | 待开发 | 目前只有 admin/staff 能登录  |
+| 居民端个人 API         | 待开发 | 居民查询自己的通话记录等     |
+| 设备拉取户号列表       | 待开发 | 单元门口机选号呼叫场景       |
+
+---
 
 ## 生成代码时的输出偏好
 
 1. 优先给出可直接落地的 Go 实现。
-2. 控制器只负责请求解析、参数校验和响应。
-3. 业务逻辑尽量放在 service 层。
-4. 配置、数据库连接、MQTT 客户端等放在 infrastructure 层。
-5. 新增配置项时，必要时补充注释说明用途、默认值和必填性。
-6. 如果需求不明确，优先延续现有工程风格，而不是引入新的框架习惯。
+2. handler 只做参数校验和响应，业务逻辑放 service。
+3. 新增配置项时补充注释说明用途、默认值和必填性。
+4. 需求不明确时，延续现有工程风格，不引入新框架习惯。
+
+---
 
 ## 文档与注释偏好
 
-- 说明尽量简洁、准确、贴近现有业务语境
-- 注释优先解释“为什么”，避免重复描述“做了什么”
-- 对环境变量、启动参数、部署相关内容，应使用面向维护者的表达方式
+- 注释优先解释"为什么"，避免重复描述"做了什么"
+- 环境变量、部署相关内容使用面向维护者的表达方式
+
+---
 
 ## 安全与稳定性要求
 
-- 避免在日志中输出密码、密钥、Token 等敏感信息
-- 涉及默认值时，优先考虑开发环境可用与生产环境安全的平衡
-- 不要为了“方便运行”而移除必要的配置校验
+- 日志中不输出密码、密钥、Token 等敏感信息
+- 不为了"方便运行"移除必要的配置校验
 - 修改数据库和认证配置时，优先保持向后兼容
+
+---
 
 ## 回答风格
 

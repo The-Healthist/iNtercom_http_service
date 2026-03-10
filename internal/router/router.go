@@ -1,16 +1,13 @@
 ﻿package router
 
 import (
-	_ "intercom_http_service/docs"
+	"intercom_http_service/internal/config"
 	"intercom_http_service/internal/handler"
 	"intercom_http_service/internal/middleware"
 	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/config"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 )
 
@@ -41,9 +38,6 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	serviceContainer := service.NewServiceContainer(db, cfg, nil)
 	// 初始化中间件
 	middleware.InitAuthMiddleware(cfg, db)
-	// 添加 Swagger 文档路由
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
 	// 注册路由
 	registerRoutes(r, serviceContainer)
 	return r
@@ -94,7 +88,7 @@ func registerPublicRoutes(
 
 	// MQTT通话和消息路由组 - 更新以匹配API文档
 	mqttGroup := api.Group("/mqtt")
-	mqttGroup.Use(middleware.PathRateLimiter(20, 40))                                                                                                             // 每秒20个请求，最多突发40个
+	mqttGroup.Use(middleware.PathRateLimiter(20, 40))                                                                                                         // 每秒20个请求，最多突发40个
 	mqttGroup.POST("/call", handler.HandleMQTTCallFunc(container, "initiateCall"))                                                                            // 发起通话，支持可选的户号参数或住户电话
 	mqttGroup.POST("/controller/device", handler.HandleMQTTCallFunc(container, "callerAction"))                                                               // 修改路径从caller-action到controller/device
 	mqttGroup.POST("/controller/resident", handler.HandleMQTTCallFunc(container, "calleeAction"))                                                             // 修改路径从callee-action到controller/resident
