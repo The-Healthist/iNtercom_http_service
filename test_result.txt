@@ -1,7 +1,0 @@
-﻿=== SESSION ===
-ERR:{"code":404,"message":"通话会话不存在"}
-=== ANSWER ===
-ERR:{"code":105000,"message":"处理被呼叫方动作失败: 会话不存在: aec3ff1b-4659-4178-a354-83e1ae567d03"}
-=== HANGUP ===
-ERR:{"code":105000,"message":"处理呼叫方动作失败: 会话不存在: aec3ff1b-4659-4178-a354-83e1ae567d03"}
-=== DONE ===

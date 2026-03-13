@@ -9,6 +9,12 @@
   - `page`: 页码，默认 1
   - `page_size`: 每页条数，默认 10
   - `building_id`: 楼号 ID，用于筛选特定楼号下的户号
+  - `search`: 关键词，模糊匹配 `household_number` / `household_ext_id`
+  - `house_code`: 楼号编码（精确匹配）
+  - `floor_code`: 楼层编码（精确匹配）
+  - `unit_code`: 单元编码（精确匹配）
+  - `household_ext_id`: 扩展户号 ID（精确匹配）
+  - `status`: 状态（`active` / `inactive`）
 - **响应**: 户号列表
 
 ## 获取户号详情
@@ -27,6 +33,10 @@
   ```json
   {
   	"household_number": "1-1-101",
+  "house_code": "08",
+  "floor_code": "01-02",
+  "unit_code": "A-B",
+  "household_ext_id": "080102AB",
   	"building_id": 1,
   	"status": "active"
   }

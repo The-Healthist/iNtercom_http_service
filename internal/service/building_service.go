@@ -17,6 +17,8 @@ type InterfaceBuildingService interface {
 	DeleteBuilding(id uint) error
 	GetBuildingDevices(buildingID uint) ([]model.Device, error)
 	GetBuildingHouseholds(buildingID uint) ([]model.Household, error)
+	GetHouseholdTemplate(buildingID uint) (*model.BuildingHouseholdTemplate, error)
+	SaveHouseholdTemplate(buildingID uint, templateName, templateJSON, operator string) (*model.BuildingHouseholdTemplate, error)
 }
 
 // BuildingService 提供楼号相关的服务
@@ -165,4 +167,64 @@ func (s *BuildingService) GetBuildingHouseholds(buildingID uint) ([]model.Househ
 	}
 
 	return households, nil
+}
+
+// GetHouseholdTemplate 获取楼栋户号模板
+func (s *BuildingService) GetHouseholdTemplate(buildingID uint) (*model.BuildingHouseholdTemplate, error) {
+	if _, err := s.GetBuildingByID(buildingID); err != nil {
+		return nil, err
+	}
+
+	var tpl model.BuildingHouseholdTemplate
+	if err := s.DB.Where("building_id = ?", buildingID).First(&tpl).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &tpl, nil
+}
+
+// SaveHouseholdTemplate 保存楼栋户号模板
+func (s *BuildingService) SaveHouseholdTemplate(buildingID uint, templateName, templateJSON, operator string) (*model.BuildingHouseholdTemplate, error) {
+	if _, err := s.GetBuildingByID(buildingID); err != nil {
+		return nil, err
+	}
+
+	var tpl model.BuildingHouseholdTemplate
+	err := s.DB.Where("building_id = ?", buildingID).First(&tpl).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			createObj := model.BuildingHouseholdTemplate{
+				BuildingID:   buildingID,
+				TemplateName: templateName,
+				TemplateJSON: templateJSON,
+				TemplateVer:  "v1",
+				LastOperator: operator,
+			}
+			if err := s.DB.Create(&createObj).Error; err != nil {
+				return nil, err
+			}
+			return &createObj, nil
+		}
+		return nil, err
+	}
+
+	updates := map[string]interface{}{
+		"template_name": templateName,
+		"template_json": templateJSON,
+		"template_ver":  "v1",
+		"last_operator": operator,
+	}
+
+	if err := s.DB.Model(&tpl).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	if err := s.DB.Where("id = ?", tpl.ID).First(&tpl).Error; err != nil {
+		return nil, err
+	}
+
+	return &tpl, nil
 }

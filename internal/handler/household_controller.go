@@ -1,11 +1,12 @@
-﻿package handler
+package handler
 
 import (
+	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/errcode"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,6 +41,10 @@ func NewHouseholdController(ctx *gin.Context, container *service.ServiceContaine
 // HouseholdRequest 表示户号请求
 type HouseholdRequest struct {
 	HouseholdNumber string `json:"household_number" binding:"required" example:"1-1-101"`
+	HouseCode       string `json:"house_code" example:"08"`
+	FloorCode       string `json:"floor_code" example:"01-02"`
+	UnitCode        string `json:"unit_code" example:"A-B"`
+	HouseholdExtID  string `json:"household_ext_id" example:"080102AB"`
 	BuildingID      uint   `json:"building_id" binding:"required" example:"1"`
 	Status          string `json:"status" example:"active"` // active, inactive
 }
@@ -89,6 +94,12 @@ func HandleHouseholdFunc(container *service.ServiceContainer, method string) gin
 // @Param page query int false "页码，默认为1"
 // @Param page_size query int false "每页条数，默认为10"
 // @Param building_id query int false "楼号ID，用于筛选特定楼号下的户号"
+// @Param search query string false "关键词（匹配户号或扩展户号ID）"
+// @Param house_code query string false "楼号编码"
+// @Param floor_code query string false "楼层编码"
+// @Param unit_code query string false "单元编码"
+// @Param household_ext_id query string false "扩展户号ID"
+// @Param status query string false "状态（active/inactive）"
 // @Success 200 {object} map[string]interface{}
 // @Failure 500 {object} ErrorResponse
 // @Router /households [get]
@@ -113,19 +124,23 @@ func (c *HouseholdController) GetHouseholds() {
 		}
 	}
 
+	filter := service.HouseholdListFilter{
+		BuildingID:     buildingID,
+		Search:         strings.TrimSpace(c.Ctx.Query("search")),
+		HouseCode:      strings.TrimSpace(c.Ctx.Query("house_code")),
+		FloorCode:      strings.TrimSpace(c.Ctx.Query("floor_code")),
+		UnitCode:       strings.TrimSpace(c.Ctx.Query("unit_code")),
+		HouseholdExtID: strings.TrimSpace(c.Ctx.Query("household_ext_id")),
+		Status:         strings.TrimSpace(c.Ctx.Query("status")),
+	}
+
 	// 获取户号服务
 	householdService := c.Container.GetService("household").(service.InterfaceHouseholdService)
 
 	var households []model.Household
 	var total int64
 	var err error
-
-	// 根据是否提供楼号ID决定获取方式
-	if buildingID > 0 {
-		households, total, err = householdService.GetHouseholdsByBuildingID(buildingID, page, pageSize)
-	} else {
-		households, total, err = householdService.GetAllHouseholds(page, pageSize)
-	}
+	households, total, err = householdService.GetHouseholdsWithFilters(page, pageSize, filter)
 
 	if err != nil {
 		errcode.FailWithMessage(c.Ctx, errcode.ErrDatabase, "获取户号列表失败: "+err.Error(), nil)
@@ -195,6 +210,10 @@ func (c *HouseholdController) CreateHousehold() {
 	// 创建户号对象
 	household := &model.Household{
 		HouseholdNumber: req.HouseholdNumber,
+		HouseCode:       req.HouseCode,
+		FloorCode:       req.FloorCode,
+		UnitCode:        req.UnitCode,
+		HouseholdExtID:  req.HouseholdExtID,
 		BuildingID:      req.BuildingID,
 	}
 
@@ -257,6 +276,18 @@ func (c *HouseholdController) UpdateHousehold() {
 	updates := make(map[string]interface{})
 	if req.HouseholdNumber != "" {
 		updates["household_number"] = req.HouseholdNumber
+	}
+	if req.HouseCode != "" {
+		updates["house_code"] = req.HouseCode
+	}
+	if req.FloorCode != "" {
+		updates["floor_code"] = req.FloorCode
+	}
+	if req.UnitCode != "" {
+		updates["unit_code"] = req.UnitCode
+	}
+	if req.HouseholdExtID != "" {
+		updates["household_ext_id"] = req.HouseholdExtID
 	}
 	if req.BuildingID > 0 {
 		// 验证楼号是否存在

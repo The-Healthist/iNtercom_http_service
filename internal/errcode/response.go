@@ -47,7 +47,12 @@ func FailWithMessage(c *gin.Context, errorCode int, message string, data interfa
 
 // ParamError 参数错误响应
 func ParamError(c *gin.Context, message string) {
-	Fail(c, ErrValidation, nil)
+	if message == "" {
+		Fail(c, ErrValidation, nil)
+		return
+	}
+
+	FailWithMessage(c, ErrValidation, message, nil)
 }
 
 // ServerError 服务器错误响应

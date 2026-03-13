@@ -1,4 +1,4 @@
-﻿package router
+package router
 
 import (
 	"intercom_http_service/internal/config"
@@ -146,9 +146,9 @@ func registerAuthenticatedRoutes(
 
 	// 物业员工路由
 	staffGroup := auth.Group("/staffs")
-	staffGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaff"))
-	staffGroup.GET("/with-devices", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaffWithDevices"))
-	staffGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaffByID"))
+	staffGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaffs"))
+	staffGroup.GET("/with-devices", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaffsWithDevices"))
+	staffGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleStaffFunc(container, "getStaff"))
 	staffGroup.POST("", handler.HandleStaffFunc(container, "createStaff"))
 	staffGroup.PUT("/:id", handler.HandleStaffFunc(container, "updateStaff"))
 	staffGroup.DELETE("/:id", handler.HandleStaffFunc(container, "deleteStaff"))
@@ -183,6 +183,10 @@ func registerAuthenticatedRoutes(
 	buildingGroup.DELETE("/:id", handler.HandleBuildingFunc(container, "deleteBuilding"))
 	buildingGroup.GET("/:id/devices", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleBuildingFunc(container, "getBuildingDevices"))
 	buildingGroup.GET("/:id/households", middleware.Cache(middleware.CacheConfig{Expiration: 1 * time.Minute}), handler.HandleBuildingFunc(container, "getBuildingHouseholds"))
+	buildingGroup.GET("/:id/household-template", handler.HandleBuildingFunc(container, "getHouseholdTemplate"))
+	buildingGroup.PUT("/:id/household-template", handler.HandleBuildingFunc(container, "saveHouseholdTemplate"))
+	buildingGroup.POST("/:id/households/batch", handler.HandleBuildingFunc(container, "batchCreateHouseholds"))
+	buildingGroup.POST("/:id/households/rollback", handler.HandleBuildingFunc(container, "rollbackBatchHouseholds"))
 
 	// 户号路由
 	householdGroup := auth.Group("/households")

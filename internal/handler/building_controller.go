@@ -1,11 +1,13 @@
-﻿package handler
+package handler
 
 import (
+	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/errcode"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +21,10 @@ type InterfaceBuildingController interface {
 	DeleteBuilding()
 	GetBuildingDevices()
 	GetBuildingHouseholds()
+	GetHouseholdTemplate()
+	SaveHouseholdTemplate()
+	BatchCreateHouseholds()
+	RollbackBatchHouseholds()
 }
 
 // BuildingController 处理楼号相关的请求
@@ -43,6 +49,32 @@ type BuildingRequest struct {
 	Status       string `json:"status" example:"active"` // active, inactive
 }
 
+// SaveHouseholdTemplateRequest 保存楼栋户号模板请求
+type SaveHouseholdTemplateRequest struct {
+	TemplateName string `json:"template_name"`
+	TemplateJSON string `json:"template_json" binding:"required"`
+}
+
+// BatchCreateHouseholdsRequest 批量创建户号请求
+type BatchCreateHouseholdsRequest struct {
+	HouseholdItems   []BatchCreateHouseholdItem `json:"household_items"`
+	HouseholdNumbers []string                   `json:"household_numbers"`
+}
+
+// BatchCreateHouseholdItem 批量创建户号结构化条目
+type BatchCreateHouseholdItem struct {
+	HouseholdNumber string `json:"household_number"`
+	HouseCode       string `json:"house"`
+	FloorCode       string `json:"floor"`
+	UnitCode        string `json:"unit"`
+	HouseholdExtID  string `json:"household_id"`
+}
+
+// RollbackBatchHouseholdsRequest 批量回滚户号请求
+type RollbackBatchHouseholdsRequest struct {
+	CreatedIDs []uint `json:"created_ids" binding:"required"`
+}
+
 // HandleBuildingFunc 返回一个处理楼号请求的Gin处理函数
 func HandleBuildingFunc(container *service.ServiceContainer, method string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -63,6 +95,14 @@ func HandleBuildingFunc(container *service.ServiceContainer, method string) gin.
 			controller.GetBuildingDevices()
 		case "getBuildingHouseholds":
 			controller.GetBuildingHouseholds()
+		case "getHouseholdTemplate":
+			controller.GetHouseholdTemplate()
+		case "saveHouseholdTemplate":
+			controller.SaveHouseholdTemplate()
+		case "batchCreateHouseholds":
+			controller.BatchCreateHouseholds()
+		case "rollbackBatchHouseholds":
+			controller.RollbackBatchHouseholds()
 		default:
 			errcode.FailWithMessage(ctx, errcode.ErrBind, "无效的方法", nil)
 		}
@@ -332,4 +372,211 @@ func (c *BuildingController) GetBuildingHouseholds() {
 	}
 
 	errcode.Success(c.Ctx, households)
+}
+
+// GetHouseholdTemplate 获取楼栋户号模板
+func (c *BuildingController) GetHouseholdTemplate() {
+	id := c.Ctx.Param("id")
+	buildingID, err := strconv.Atoi(id)
+	if err != nil {
+		errcode.ParamError(c.Ctx, "无效的楼号ID")
+		return
+	}
+
+	buildingService := c.Container.GetService("building").(service.InterfaceBuildingService)
+	tpl, err := buildingService.GetHouseholdTemplate(uint(buildingID))
+	if err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrDatabase, "获取模板失败: "+err.Error(), nil)
+		return
+	}
+
+	if tpl == nil {
+		errcode.Success(c.Ctx, gin.H{"exists": false})
+		return
+	}
+
+	errcode.Success(c.Ctx, gin.H{
+		"exists":        true,
+		"id":            tpl.ID,
+		"template_name": tpl.TemplateName,
+		"template_json": tpl.TemplateJSON,
+		"template_ver":  tpl.TemplateVer,
+		"updated_at":    tpl.UpdatedAt,
+	})
+}
+
+// SaveHouseholdTemplate 保存楼栋户号模板
+func (c *BuildingController) SaveHouseholdTemplate() {
+	id := c.Ctx.Param("id")
+	buildingID, err := strconv.Atoi(id)
+	if err != nil {
+		errcode.ParamError(c.Ctx, "无效的楼号ID")
+		return
+	}
+
+	var req SaveHouseholdTemplateRequest
+	if err := c.Ctx.ShouldBindJSON(&req); err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrBind, "无效的请求参数: "+err.Error(), nil)
+		return
+	}
+
+	templateJSON := strings.TrimSpace(req.TemplateJSON)
+	if templateJSON == "" {
+		errcode.ParamError(c.Ctx, "模板内容不能为空")
+		return
+	}
+
+	operator := "admin"
+	buildingService := c.Container.GetService("building").(service.InterfaceBuildingService)
+	tpl, err := buildingService.SaveHouseholdTemplate(uint(buildingID), req.TemplateName, templateJSON, operator)
+	if err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrDatabase, "保存模板失败: "+err.Error(), nil)
+		return
+	}
+
+	errcode.Success(c.Ctx, gin.H{
+		"id":            tpl.ID,
+		"template_name": tpl.TemplateName,
+		"updated_at":    tpl.UpdatedAt,
+	})
+}
+
+// BatchCreateHouseholds 批量创建楼栋户号（自动去重）
+func (c *BuildingController) BatchCreateHouseholds() {
+	id := c.Ctx.Param("id")
+	buildingID, err := strconv.Atoi(id)
+	if err != nil {
+		errcode.ParamError(c.Ctx, "无效的楼号ID")
+		return
+	}
+
+	var req BatchCreateHouseholdsRequest
+	if err := c.Ctx.ShouldBindJSON(&req); err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrBind, "无效的请求参数: "+err.Error(), nil)
+		return
+	}
+
+	normalized := make([]string, 0, len(req.HouseholdNumbers))
+	seen := make(map[string]bool)
+	for _, item := range req.HouseholdNumbers {
+		n := strings.TrimSpace(item)
+		if n == "" {
+			continue
+		}
+		if seen[n] {
+			continue
+		}
+		seen[n] = true
+		normalized = append(normalized, n)
+	}
+
+	if len(normalized) == 0 && len(req.HouseholdItems) == 0 {
+		errcode.ParamError(c.Ctx, "至少提供一个户号")
+		return
+	}
+
+	items := make([]service.BatchHouseholdInput, 0, len(normalized)+len(req.HouseholdItems))
+	for _, item := range req.HouseholdItems {
+		householdNumber := strings.TrimSpace(item.HouseholdNumber)
+		if householdNumber == "" {
+			householdNumber = strings.TrimSpace(item.HouseholdExtID)
+		}
+		if householdNumber == "" {
+			continue
+		}
+
+		items = append(items, service.BatchHouseholdInput{
+			HouseholdNumber: householdNumber,
+			HouseCode:       strings.TrimSpace(item.HouseCode),
+			FloorCode:       strings.TrimSpace(item.FloorCode),
+			UnitCode:        strings.TrimSpace(item.UnitCode),
+			HouseholdExtID:  strings.TrimSpace(item.HouseholdExtID),
+		})
+	}
+
+	for _, number := range normalized {
+		items = append(items, service.BatchHouseholdInput{HouseholdNumber: number})
+	}
+
+	if len(items) == 0 {
+		errcode.ParamError(c.Ctx, "至少提供一个有效户号")
+		return
+	}
+
+	if len(items) > 5000 {
+		errcode.ParamError(c.Ctx, "单次最多创建5000个户号")
+		return
+	}
+
+	householdService := c.Container.GetService("household").(service.InterfaceHouseholdService)
+	created, skipped, failed, err := householdService.BatchCreateHouseholds(uint(buildingID), items)
+	if err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrDatabase, "批量创建失败: "+err.Error(), nil)
+		return
+	}
+
+	createdIDs := make([]uint, 0, len(created))
+	createdNumbers := make([]string, 0, len(created))
+	for _, item := range created {
+		createdIDs = append(createdIDs, item.ID)
+		createdNumbers = append(createdNumbers, item.HouseholdNumber)
+	}
+
+	createdStructured := make([]gin.H, 0, len(created))
+	for _, item := range created {
+		createdStructured = append(createdStructured, gin.H{
+			"id":               item.ID,
+			"household_number": item.HouseholdNumber,
+			"house":            item.HouseCode,
+			"floor":            item.FloorCode,
+			"unit":             item.UnitCode,
+			"household_id":     item.HouseholdExtID,
+		})
+	}
+
+	errcode.Success(c.Ctx, gin.H{
+		"request_id":      strconv.FormatInt(time.Now().UnixNano(), 10),
+		"created_count":   len(createdIDs),
+		"skipped_count":   len(skipped),
+		"failed_count":    len(failed),
+		"created_ids":     createdIDs,
+		"created_numbers": createdNumbers,
+		"created_items":   createdStructured,
+		"skipped_numbers": skipped,
+		"failed_numbers":  failed,
+	})
+}
+
+// RollbackBatchHouseholds 回滚指定批次创建的户号
+func (c *BuildingController) RollbackBatchHouseholds() {
+	id := c.Ctx.Param("id")
+	buildingID, err := strconv.Atoi(id)
+	if err != nil {
+		errcode.ParamError(c.Ctx, "无效的楼号ID")
+		return
+	}
+
+	var req RollbackBatchHouseholdsRequest
+	if err := c.Ctx.ShouldBindJSON(&req); err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrBind, "无效的请求参数: "+err.Error(), nil)
+		return
+	}
+
+	if len(req.CreatedIDs) == 0 {
+		errcode.ParamError(c.Ctx, "created_ids 不能为空")
+		return
+	}
+
+	householdService := c.Container.GetService("household").(service.InterfaceHouseholdService)
+	deletedIDs, blocked, err := householdService.RollbackBatchHouseholds(uint(buildingID), req.CreatedIDs)
+	if err != nil {
+		errcode.FailWithMessage(c.Ctx, errcode.ErrDatabase, "回滚失败: "+err.Error(), nil)
+		return
+	}
+
+	errcode.Success(c.Ctx, gin.H{
+		"deleted_count": len(deletedIDs),
+		"deleted_ids":   deletedIDs,
+		"blocked":       blocked,
+	})
 }

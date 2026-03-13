@@ -1,9 +1,10 @@
-﻿package service
+package service
 
 import (
 	"errors"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/model"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -12,14 +13,37 @@ import (
 type InterfaceHouseholdService interface {
 	GetAllHouseholds(page, pageSize int) ([]model.Household, int64, error)
 	GetHouseholdsByBuildingID(buildingID uint, page, pageSize int) ([]model.Household, int64, error)
+	GetHouseholdsWithFilters(page, pageSize int, filter HouseholdListFilter) ([]model.Household, int64, error)
 	GetHouseholdByID(id uint) (*model.Household, error)
 	CreateHousehold(household *model.Household) error
+	BatchCreateHouseholds(buildingID uint, items []BatchHouseholdInput) ([]model.Household, []string, []string, error)
 	UpdateHousehold(id uint, updates map[string]interface{}) (*model.Household, error)
 	DeleteHousehold(id uint) error
+	RollbackBatchHouseholds(buildingID uint, ids []uint) ([]uint, map[uint]string, error)
 	GetHouseholdDevices(householdID uint) ([]model.Device, error)
 	GetHouseholdResidents(householdID uint) ([]model.Resident, error)
 	AssociateHouseholdWithDevice(householdID, deviceID uint) error
 	RemoveHouseholdDeviceAssociation(householdID, deviceID uint) error
+}
+
+// BatchHouseholdInput 表示批量创建户号的结构化输入
+type BatchHouseholdInput struct {
+	HouseholdNumber string
+	HouseCode       string
+	FloorCode       string
+	UnitCode        string
+	HouseholdExtID  string
+}
+
+// HouseholdListFilter 表示户号列表筛选条件
+type HouseholdListFilter struct {
+	BuildingID     uint
+	Search         string
+	HouseCode      string
+	FloorCode      string
+	UnitCode       string
+	HouseholdExtID string
+	Status         string
 }
 
 // HouseholdService 提供户号相关的服务
@@ -38,40 +62,65 @@ func NewHouseholdService(db *gorm.DB, cfg *config.Config) InterfaceHouseholdServ
 
 // 1. GetAllHouseholds 获取所有户号列表，支持分页
 func (s *HouseholdService) GetAllHouseholds(page, pageSize int) ([]model.Household, int64, error) {
+	return s.GetHouseholdsWithFilters(page, pageSize, HouseholdListFilter{})
+}
+
+func applyHouseholdFilterQuery(query *gorm.DB, filter HouseholdListFilter) *gorm.DB {
+	if filter.BuildingID > 0 {
+		query = query.Where("building_id = ?", filter.BuildingID)
+	}
+
+	if filter.Search != "" {
+		keyword := "%" + filter.Search + "%"
+		query = query.Where("household_number LIKE ? OR household_ext_id LIKE ?", keyword, keyword)
+	}
+
+	if filter.HouseCode != "" {
+		query = query.Where("house_code = ?", filter.HouseCode)
+	}
+
+	if filter.FloorCode != "" {
+		query = query.Where("floor_code = ?", filter.FloorCode)
+	}
+
+	if filter.UnitCode != "" {
+		query = query.Where("unit_code = ?", filter.UnitCode)
+	}
+
+	if filter.HouseholdExtID != "" {
+		query = query.Where("household_ext_id = ?", filter.HouseholdExtID)
+	}
+
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
+	}
+
+	return query
+}
+
+// 2. GetHouseholdsWithFilters 获取户号列表（支持多条件筛选）
+func (s *HouseholdService) GetHouseholdsWithFilters(page, pageSize int, filter HouseholdListFilter) ([]model.Household, int64, error) {
 	var households []model.Household
 	var total int64
+	query := applyHouseholdFilterQuery(s.DB.Model(&model.Household{}), filter)
 
 	// 获取总数
-	if err := s.DB.Model(&model.Household{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	if err := s.DB.Preload("Building").Limit(pageSize).Offset(offset).Find(&households).Error; err != nil {
+	if err := query.Preload("Building").Limit(pageSize).Offset(offset).Order("id desc").Find(&households).Error; err != nil {
 		return nil, 0, err
 	}
 
 	return households, total, nil
 }
 
-// 2. GetHouseholdsByBuildingID 获取指定楼号下的户号列表
+// 3. GetHouseholdsByBuildingID 获取指定楼号下的户号列表
 func (s *HouseholdService) GetHouseholdsByBuildingID(buildingID uint, page, pageSize int) ([]model.Household, int64, error) {
-	var households []model.Household
-	var total int64
-
-	// 获取总数
-	if err := s.DB.Model(&model.Household{}).Where("building_id = ?", buildingID).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	if err := s.DB.Where("building_id = ?", buildingID).Preload("Building").Limit(pageSize).Offset(offset).Find(&households).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return households, total, nil
+	return s.GetHouseholdsWithFilters(page, pageSize, HouseholdListFilter{BuildingID: buildingID})
 }
 
 // 3. GetHouseholdByID 根据ID获取户号
@@ -103,6 +152,86 @@ func (s *HouseholdService) CreateHousehold(household *model.Household) error {
 	}
 
 	return s.DB.Create(household).Error
+}
+
+// BatchCreateHouseholds 批量创建户号，自动跳过已存在户号
+func (s *HouseholdService) BatchCreateHouseholds(buildingID uint, items []BatchHouseholdInput) ([]model.Household, []string, []string, error) {
+	created := make([]model.Household, 0)
+	skipped := make([]string, 0)
+	failed := make([]string, 0)
+
+	if len(items) == 0 {
+		return created, skipped, failed, nil
+	}
+
+	normalized := make([]BatchHouseholdInput, 0, len(items))
+	for _, item := range items {
+		number := strings.TrimSpace(item.HouseholdNumber)
+		extID := strings.TrimSpace(item.HouseholdExtID)
+		if number == "" {
+			number = extID
+		}
+		if number == "" {
+			continue
+		}
+
+		normalized = append(normalized, BatchHouseholdInput{
+			HouseholdNumber: number,
+			HouseCode:       strings.TrimSpace(item.HouseCode),
+			FloorCode:       strings.TrimSpace(item.FloorCode),
+			UnitCode:        strings.TrimSpace(item.UnitCode),
+			HouseholdExtID:  extID,
+		})
+	}
+
+	if len(normalized) == 0 {
+		return created, skipped, failed, nil
+	}
+
+	householdNumbers := make([]string, 0, len(normalized))
+	for _, item := range normalized {
+		householdNumbers = append(householdNumbers, item.HouseholdNumber)
+	}
+
+	// 先查询已存在集合，避免重复入库
+	var exists []model.Household
+	if err := s.DB.Where("building_id = ? AND household_number IN ?", buildingID, householdNumbers).Find(&exists).Error; err != nil {
+		return nil, nil, nil, err
+	}
+
+	existMap := make(map[string]bool, len(exists))
+	for _, item := range exists {
+		existMap[item.HouseholdNumber] = true
+	}
+
+	for _, item := range normalized {
+		householdNumber := item.HouseholdNumber
+
+		if existMap[householdNumber] {
+			skipped = append(skipped, householdNumber)
+			continue
+		}
+
+		h := model.Household{
+			BuildingID:      buildingID,
+			HouseholdNumber: householdNumber,
+			HouseCode:       item.HouseCode,
+			FloorCode:       item.FloorCode,
+			UnitCode:        item.UnitCode,
+			HouseholdExtID:  item.HouseholdExtID,
+			Status:          "active",
+		}
+
+		if err := s.DB.Create(&h).Error; err != nil {
+			failed = append(failed, householdNumber)
+			continue
+		}
+
+		existMap[householdNumber] = true
+		created = append(created, h)
+	}
+
+	return created, skipped, failed, nil
 }
 
 // 5. UpdateHousehold 更新户号信息
@@ -173,6 +302,47 @@ func (s *HouseholdService) DeleteHousehold(id uint) error {
 	}
 
 	return s.DB.Delete(household).Error
+}
+
+// RollbackBatchHouseholds 回滚批量创建的户号（仅删除无关联设备和居民的数据）
+func (s *HouseholdService) RollbackBatchHouseholds(buildingID uint, ids []uint) ([]uint, map[uint]string, error) {
+	deleted := make([]uint, 0)
+	blocked := make(map[uint]string)
+
+	for _, id := range ids {
+		var household model.Household
+		if err := s.DB.Where("id = ? AND building_id = ?", id, buildingID).First(&household).Error; err != nil {
+			blocked[id] = "户号不存在或不属于该楼栋"
+			continue
+		}
+
+		var residentCount int64
+		if err := s.DB.Model(&model.Resident{}).Where("household_id = ?", id).Count(&residentCount).Error; err != nil {
+			return nil, nil, err
+		}
+		if residentCount > 0 {
+			blocked[id] = "存在关联居民"
+			continue
+		}
+
+		var deviceCount int64
+		if err := s.DB.Model(&model.Device{}).Where("household_id = ?", id).Count(&deviceCount).Error; err != nil {
+			return nil, nil, err
+		}
+		if deviceCount > 0 {
+			blocked[id] = "存在关联设备"
+			continue
+		}
+
+		if err := s.DB.Delete(&household).Error; err != nil {
+			blocked[id] = "删除失败"
+			continue
+		}
+
+		deleted = append(deleted, id)
+	}
+
+	return deleted, blocked, nil
 }
 
 // 7. GetHouseholdDevices 获取户号关联的设备

@@ -59,6 +59,7 @@ Building（楼号）
    - 为非必须项提供合理默认值，为必须项使用必填校验
    - 命名风格与现有字段保持一致
 9. 修改接口或配置行为时，同步考虑 `docs/` 下文档的更新需求。
+10.我需要docker启动我的mysql和redis和mqtt,但是不启动http服务,这样方便修改后能直接 go run main.go 来调试，而不需要每次都重启docker,修改后重启我的后端的话,也是直接go run main.go 就行了，不需要重启docker.
 
 ---
 

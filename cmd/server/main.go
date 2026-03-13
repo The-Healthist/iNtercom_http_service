@@ -108,6 +108,9 @@ func autoMigrate(db *gorm.DB) error {
 	err := db.AutoMigrate(
 		&model.Admin{},
 		&model.PropertyStaff{},
+		&model.Building{},
+		&model.Household{},
+		&model.BuildingHouseholdTemplate{},
 		&model.Device{},
 		&model.Resident{},
 		&model.CallRecord{},
@@ -226,7 +229,7 @@ func dropAndRecreateTables(db *gorm.DB) error {
 	// 删除所有表
 	tables := []string{
 		"admins", "property_staffs", "devices", "residents", "call_records",
-		"access_logs", "emergency_logs", "system_logs", "buildings", "households",
+		"access_logs", "emergency_logs", "system_logs", "buildings", "households", "building_household_templates",
 	}
 
 	for _, table := range tables {
