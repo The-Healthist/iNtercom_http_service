@@ -2,10 +2,10 @@
 
 import (
 	"context"
+	"intercom_http_service/internal/config"
 	"log"
 	"sync"
 	"time"
-	"intercom_http_service/internal/config"
 
 	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
@@ -21,7 +21,6 @@ type ServiceContainer struct {
 	jwtService InterfaceJWTService
 
 	// RTC相关服务
-	rtcService        InterfaceRTCService
 	tencentRTCService InterfaceTencentRTCService
 
 	// 数据存储服务
@@ -81,7 +80,6 @@ func (c *ServiceContainer) initializeServices() {
 	c.jwtService = NewJWTService(c.config, c.db)
 
 	// 初始化RTC服务
-	c.rtcService = NewRTCService(c.config)
 	c.tencentRTCService = NewTencentRTCService(c.config)
 
 	// 初始化Redis服务
@@ -120,8 +118,6 @@ func (c *ServiceContainer) GetService(name string) interface{} {
 		return c.db
 	case "jwt":
 		return c.jwtService
-	case "rtc":
-		return c.rtcService
 	case "tencent_rtc":
 		return c.tencentRTCService
 	case "mqtt_call":

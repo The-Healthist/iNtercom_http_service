@@ -1,11 +1,22 @@
 {
 	"folders": [
 		{
+			"name": "iNtercom_http_service",
 			"path": "."
 		},
 		{
+			"name": "iNtercom_web_admin",
 			"path": "../iNtercom_web_admin"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"go.gopath": "/Users/yangliu/go",
+		"go.inferGopath": false
+	},
+	"extensions": {
+		"recommendations": [
+			"golang.go",
+			"vue.volar"
+		]
+	}
 }

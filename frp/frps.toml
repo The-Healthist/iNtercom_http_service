@@ -1,0 +1,22 @@
+# frps.toml (server)
+bindPort = 7000
+
+# 与 frpc 保持一致
+auth.method = "token"
+auth.token = "{frp_token}"
+
+# 可选：只允许客户端申请这些 remotePort，防止乱开端口
+allowPorts = [
+  { start = 20033, end = 20033 }
+]
+
+# 可选：管理面板（生产建议限制来源IP或关闭）
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "admin123"
+
+# 可选：日志
+log.to = "/home/ubuntu/frps/frps.log"
+log.level = "info"
+log.maxDays = 7

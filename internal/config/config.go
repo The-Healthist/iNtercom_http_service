@@ -34,15 +34,10 @@ type Config struct {
 	RedisPort string
 	RedisDB   int
 
-	// Aliyun RTC
-	AliyunAccessKey string
-	AliyunRTCAppID  string
-	AliyunRTCRegion string
-
 	// Tencent Cloud RTC
 	TencentSDKAppID   int    // 腾讯云 SDKAppID
 	TencentSecretKey  string // 腾讯云 SDKAppID 对应的密钥
-	TencentRTCEnabled bool   // 是否启用腾讯云RTC，如果为false则使用阿里云RTC
+	TencentRTCEnabled bool   // 是否启用腾讯云RTC
 
 	// MQTT配置
 	MQTTBrokerURL  string // MQTT服务器地址，如 tcp://broker.example.com:1883
@@ -103,25 +98,22 @@ func LoadConfig() *Config {
 		RedisPort: getEnv(prefix+"REDIS_PORT", getEnv("REDIS_PORT", "6380")),
 		RedisDB:   getEnvAsInt("REDIS_DB", 0),
 
-		// Aliyun RTC config（启用腾讯云 RTC 时可留空）
-		AliyunAccessKey: getEnv("ALIYUN_ACCESS_KEY", ""),
-		AliyunRTCAppID:  getEnv("ALIYUN_RTC_APP_ID", ""),
-		AliyunRTCRegion: getEnv("ALIYUN_RTC_REGION", "cn-hangzhou"),
-
 		// Tencent Cloud RTC config
 		TencentSDKAppID:   tencentAppID,
 		TencentSecretKey:  getEnv("TENCENT_SECRET_KEY", ""),
 		TencentRTCEnabled: getEnvAsBool("TENCENT_RTC_ENABLED", false),
 
 		// MQTT配置
-		MQTTBrokerURL:  getEnv("MQTT_BROKER_URL", "tcp://localhost:1883"),
-		MQTTClientID:   getEnv("MQTT_CLIENT_ID", "intercom_server"),
-		MQTTUsername:   getEnv("MQTT_USERNAME", ""),
-		MQTTPassword:   getEnv("MQTT_PASSWORD", ""),
-		MQTTQoS:        getEnvAsInt("MQTT_QOS", 1),
-		MQTTRetained:   getEnvAsBool("MQTT_RETAINED", false),
+		MQTTBrokerURL: getEnv("MQTT_BROKER_URL", "tcp://localhost:1883"),
+		MQTTClientID:  getEnv("MQTT_CLIENT_ID", "intercom_server"),
+		MQTTUsername:  getEnv("MQTT_USERNAME", ""),
+		MQTTPassword:  getEnv("MQTT_PASSWORD", ""),
+		MQTTQoS:       getEnvAsInt("MQTT_QOS", 1),
+		MQTTRetained:  getEnvAsBool("MQTT_RETAINED", false),
+		// 默认关闭用于本地明文 broker；云端 MQTT 请在 .env 显式设为 true
 		MQTTSSLEnabled: getEnvAsBool("MQTT_SSL_ENABLED", false),
-		MQTTCACertPath: getEnv("MQTT_CA_CERT_PATH", ""),
+		// 默认使用项目中的 CA 证书路径（云端场景建议显式配置）
+		MQTTCACertPath: getEnv("MQTT_CA_CERT_PATH", "internal/mqtt/certs/emqxsl-ca.crt"),
 
 		// JWT Config
 		JWTSecretKey: getEnv("JWT_SECRET_KEY", "intercom-secret-key-change-in-production"),

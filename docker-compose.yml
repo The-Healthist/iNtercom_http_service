@@ -1,49 +1,4 @@
 services:
-  app:
-    image: stonesea/intercom-http-service:2.3.0
-    container_name: intercom_http_service
-    restart: always
-    ports:
-      - '20033:8080'
-    volumes:
-      - ./logs:/app/logs
-      - ./.env:/app/.env
-      - ./internal/mqtt/certs:/mosquitto/certs
-    environment:
-      - ENV_TYPE=SERVER
-      - ALIYUN_ACCESS_KEY=${ALIYUN_ACCESS_KEY}
-      - ALIYUN_RTC_APP_ID=${ALIYUN_RTC_APP_ID}
-      - ALIYUN_RTC_REGION=${ALIYUN_RTC_REGION}
-      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD}
-      - LOCAL_DB_HOST=db
-      - LOCAL_DB_USER=root
-      - LOCAL_DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - LOCAL_DB_NAME=${MYSQL_DATABASE}
-      - LOCAL_DB_PORT=3306
-      - SERVER_DB_HOST=db
-      - SERVER_DB_USER=root
-      - SERVER_DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - SERVER_DB_NAME=${MYSQL_DATABASE}
-      - SERVER_DB_PORT=3306
-      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-tcp://mqtt:1883}
-      - MQTT_USERNAME=${MQTT_USERNAME:-}
-      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
-      - MQTT_SSL_ENABLED=${MQTT_SSL_ENABLED:-true}
-      - MQTT_CA_CERT_PATH=${MQTT_CA_CERT_PATH:-/mosquitto/certs/emqxsl-ca.crt}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - intercom_network
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/api/ping']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
   db:
     image: mysql:8.0
     container_name: intercom_mysql
@@ -87,39 +42,16 @@ services:
       retries: 3
       start_period: 5s
 
-  mqtt:
-    image: eclipse-mosquitto:2.0
-    container_name: intercom_mqtt
+  frpc:
+    image: fatedier/frpc:latest
+    container_name: intercom_frpc
     restart: always
-    ports:
-      - '1884:1883'
-      - '8883:8883'
-      - '9001:9001'
     volumes:
-      - ./internal/mqtt/config:/mosquitto/config
-      - ./internal/mqtt/data:/mosquitto/data
-      - ./internal/mqtt/log:/mosquitto/log
-      - ./internal/mqtt/certs:/mosquitto/certs
+      - ./frp/frpc.toml:/etc/frp/frpc.toml
     networks:
       - intercom_network
-    healthcheck:
-      test:
-        [
-          'CMD',
-          '/usr/bin/mosquitto_sub',
-          '-t',
-          '$$SYS/#',
-          '-C',
-          '1',
-          '-i',
-          'healthcheck',
-          '-W',
-          '3',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   intercom_network:
@@ -130,3 +62,5 @@ volumes:
     name: intercom_mysql_data
   redis_data:
     name: intercom_redis_data
+  mqtt_log:
+    name: intercom_mqtt_log

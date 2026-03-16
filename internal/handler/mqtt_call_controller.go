@@ -174,7 +174,7 @@ func (c *MQTTCallController) InitiateCall() {
 		// 如果提供了户号，向该户号下的所有居民发起呼叫
 		callID, targetResidentIDs, err = mqttCallService.InitiateCallToHousehold(req.DeviceID, req.HouseholdNumber)
 	} else {
-		// 否则，向关联该设备的户号下的所有居民发起呼叫
+		// 否则，向关联该设备的所有户号下的所有居民发起呼叫
 		callID, targetResidentIDs, err = mqttCallService.InitiateCallToAll(req.DeviceID)
 	}
 

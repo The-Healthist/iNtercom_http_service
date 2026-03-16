@@ -209,7 +209,7 @@ http://服务器IP:20033/swagger/index.html
 - **楼号管理**: `/api/buildings/*`
 - **户号管理**: `/api/households/*`
 - **MQTT通信**: `/api/mqtt/*`
-- **RTC服务**: `/api/rtc/*`, `/api/trtc/*`
+- **RTC服务**: `/api/trtc/*`
 
 ## 系统特性
 
@@ -220,7 +220,7 @@ http://服务器IP:20033/swagger/index.html
   - 高效的数据库连接池管理
   - 响应缓存中间件，支持多种缓存策略
   - 多级限流保护，支持IP、路径和自定义限流
-- **视频通话集成**: 支持阿里云RTC和腾讯云TRTC
+- **视频通话集成**: 支持腾讯云TRTC
 - **容器化部署**: 使用Docker和Docker Compose简化部署和维护
 - **健康检查**: 服务健康状态监控，确保系统稳定运行
 

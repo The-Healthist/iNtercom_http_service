@@ -75,11 +75,6 @@ func registerPublicRoutes(
 
 	// 认证路由
 	api.POST("/auth/login", handler.HandleJWTFunc(container, "login"))
-	// 阿里云RTC路由
-	rtcGroup := api.Group("/rtc")
-	rtcGroup.Use(middleware.PathRateLimiter(5, 10)) // 每秒5个请求，最多突发10个
-	rtcGroup.POST("/token", handler.HandleRTCFunc(container, "getToken"))
-	rtcGroup.POST("/call", handler.HandleRTCFunc(container, "startCall"))
 	// 腾讯云RTC路由
 	trtcGroup := api.Group("/trtc")
 	trtcGroup.Use(middleware.PathRateLimiter(5, 10)) // 每秒5个请求，最多突发10个

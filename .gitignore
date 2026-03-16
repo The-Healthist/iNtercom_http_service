@@ -36,3 +36,7 @@
 /docker-compose-frp
 /migration_temp
 /migration_scripts
+/frp/frp_0.62.1_darwin_arm64
+*.code-workspace
+*.code-workspace
+*.code-workspace
