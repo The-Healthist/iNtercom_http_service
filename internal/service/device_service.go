@@ -2,8 +2,8 @@
 
 import (
 	"errors"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/model"
 
 	"gorm.io/gorm"
 )
@@ -90,7 +90,18 @@ func (s *DeviceService) CreateDevice(device *model.Device) error {
 		device.Status = model.DeviceStatusOffline
 	}
 
-	return s.DB.Create(device).Error
+	// building_id / household_id 在数据库中是可空外键。
+	// 当业务层未指定关联时，uint 零值会变成 0 并触发外键约束错误，
+	// 因此这里显式忽略零值字段，让数据库写入 NULL。
+	query := s.DB
+	if device.BuildingID == 0 {
+		query = query.Omit("BuildingID")
+	}
+	if device.HouseholdID == 0 {
+		query = query.Omit("HouseholdID")
+	}
+
+	return query.Create(device).Error
 }
 
 // 4 UpdateDevice 更新设备信息
