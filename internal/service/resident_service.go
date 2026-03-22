@@ -2,8 +2,8 @@
 
 import (
 	"errors"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/model"
 
 	"gorm.io/gorm"
 )
@@ -126,5 +126,24 @@ func (s *ResidentService) DeleteResident(id uint) error {
 	if err != nil {
 		return err
 	}
-	return s.DB.Delete(resident).Error
+
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("resident_id = ?", id).Delete(&model.CallRecord{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("resident_id = ?", id).Delete(&model.AccessLog{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Where("resident_id = ?", id).Delete(&model.EmergencyLog{}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Delete(resident).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

@@ -1,12 +1,12 @@
-﻿package service
+package service
 
 import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/model"
 	"log"
 	"os"
 	"strconv"
@@ -28,7 +28,7 @@ type InterfaceMQTTCallService interface {
 	InitiateCallToHousehold(deviceID string, householdNumber string) (string, []string, error)
 	InitiateCallByPhone(deviceID string, phone string) (string, []string, error)
 	HandleCallerAction(callID, action, reason string) error
-	HandleCalleeAction(callID, action, reason string) error
+	HandleCalleeAction(callID, action, reason, residentID string) error
 	GetCallSession(callID string) (*model.CallSession, bool)
 	EndCallSession(callID, reason string) error
 	CleanupTimedOutSessions() int
@@ -90,10 +90,14 @@ type (
 
 	// ControlMessage 控制消息
 	ControlMessage struct {
-		Action    string `json:"action"`
-		CallID    string `json:"call_id"`
-		Timestamp int64  `json:"timestamp"`
-		Reason    string `json:"reason,omitempty"`
+		MessageType    string `json:"message_type,omitempty"`
+		Action         string `json:"action"`
+		CallID         string `json:"call_id"`
+		Timestamp      int64  `json:"timestamp"`
+		Reason         string `json:"reason,omitempty"`
+		DeviceDeviceID string `json:"device_device_id,omitempty"`
+		ResidentID     string `json:"resident_id,omitempty"`
+		RoomID         string `json:"room_id,omitempty"`
 	}
 
 	// CallRequest 呼叫请求结构
@@ -131,6 +135,71 @@ type (
 		Timestamp int64       `json:"timestamp"`
 	}
 )
+
+// buildControlPayload 构建兼容控制消息载荷。
+// 顶层字段保持兼容，同时补充 call_info 便于客户端统一解析。
+func buildControlPayload(controlMsg ControlMessage) map[string]interface{} {
+	messageType := controlMsg.MessageType
+	if messageType == "" {
+		messageType = "call_control"
+	}
+
+	payload := map[string]interface{}{
+		"message_type": messageType,
+		"action":       controlMsg.Action,
+		"call_id":      controlMsg.CallID,
+		"timestamp":    controlMsg.Timestamp,
+		"call_info":    controlMsg,
+	}
+
+	if controlMsg.Reason != "" {
+		payload["reason"] = controlMsg.Reason
+	}
+
+	if controlMsg.DeviceDeviceID != "" {
+		payload["device_device_id"] = controlMsg.DeviceDeviceID
+	}
+
+	if controlMsg.ResidentID != "" {
+		payload["resident_id"] = controlMsg.ResidentID
+	}
+
+	if controlMsg.RoomID != "" {
+		payload["room_id"] = controlMsg.RoomID
+	}
+
+	return payload
+}
+
+func buildControlMessage(callID, action, reason string, timestamp int64, session *model.CallSession, residentID string) ControlMessage {
+	controlMsg := ControlMessage{
+		MessageType: "call_control",
+		Action:      action,
+		CallID:      callID,
+		Timestamp:   timestamp,
+		Reason:      reason,
+	}
+
+	if session != nil {
+		controlMsg.DeviceDeviceID = session.DeviceID
+		controlMsg.RoomID = session.TRTCInfo.RoomID
+
+		if residentID == "" {
+			residentID = session.ResidentID
+		}
+	}
+
+	if residentID != "" {
+		controlMsg.ResidentID = residentID
+	}
+
+	return controlMsg
+}
+
+func (s *MQTTCallService) mustGetSession(callID string) *model.CallSession {
+	session, _ := s.CallManager.GetSession(callID)
+	return session
+}
 
 // 通话控制信号类型
 type CallControlSignal int
@@ -351,6 +420,8 @@ func (s *MQTTCallService) InitiateCall(deviceID, residentID string) (string, err
 
 	// 生成唯一的通话ID
 	callID := uuid.New().String()
+	callUnix := time.Now().Unix()
+	roomID := BuildSharedTRTCRoomID(deviceID, residentID, callUnix)
 
 	// 创建通话控制通道
 	controlChan := make(chan CallControlMessage, 10) // 缓冲区大小10
@@ -358,15 +429,6 @@ func (s *MQTTCallService) InitiateCall(deviceID, residentID string) (string, err
 
 	// 启动独立的通话控制goroutine
 	go s.handleCallSession(callID, deviceID, residentID, controlChan)
-
-	// 创建TRTC房间并生成签名
-	rtcRoomID, err := s.RTCService.CreateVideoCall(deviceID, residentID)
-	if err != nil {
-		// 发送错误信号并关闭通道
-		controlChan <- CallControlMessage{Signal: SignalError, Reason: err.Error()}
-		s.CallChannels.Delete(callID)
-		return "", fmt.Errorf("创建TRTC房间失败: %v", err)
-	}
 
 	// 为住户生成UserSig
 	tokenInfo, err := s.RTCService.GetUserSig(residentID)
@@ -379,7 +441,7 @@ func (s *MQTTCallService) InitiateCall(deviceID, residentID string) (string, err
 
 	// 创建TRTC信息
 	trtcInfo := model.TRTCInfo{
-		RoomID:     rtcRoomID,
+		RoomID:     roomID,
 		RoomIDType: "string",
 		SDKAppID:   tokenInfo.SDKAppID,
 		UserID:     tokenInfo.UserID,
@@ -424,21 +486,18 @@ func (s *MQTTCallService) InitiateCall(deviceID, residentID string) (string, err
 
 	// 创建振铃控制消息
 	timestamp := time.Now().UnixMilli()
-	ringControl := ControlMessage{
-		Action:    "ringing",
-		CallID:    callID,
-		Timestamp: timestamp,
-	}
+	ringControl := buildControlMessage(callID, "ringing", "", timestamp, s.mustGetSession(callID), residentID)
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, "ringing", timestamp)
 
 	// 同时发送振铃消息给设备和住户
-	if err := s.publishMessage(TopicDeviceController, ringControl); err != nil {
+	controlPayload := buildControlPayload(ringControl)
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给设备失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, ringControl); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给住户失败: %v", err)
 	}
 
@@ -558,7 +617,7 @@ func (s *MQTTCallService) handleCallSession(callID, deviceID, residentID string,
 // HandleCallerAction 处理呼叫方动作
 func (s *MQTTCallService) HandleCallerAction(callID, action, reason string) error {
 	// 获取会话
-	_, exists := s.CallManager.GetSession(callID)
+	session, exists := s.CallManager.GetSession(callID)
 	if !exists {
 		return fmt.Errorf("会话不存在: %s", callID)
 	}
@@ -614,22 +673,19 @@ func (s *MQTTCallService) HandleCallerAction(callID, action, reason string) erro
 
 	// 创建控制消息
 	timestamp := time.Now().UnixMilli()
-	controlMsg := ControlMessage{
-		Action:    action,
-		CallID:    callID,
-		Timestamp: timestamp,
-		Reason:    reason,
-	}
+	controlMsg := buildControlMessage(callID, action, reason, timestamp, session, "")
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, action, timestamp)
 
 	// 同时发送控制消息给设备端和住户端，确保双方都收到消息
-	if err := s.publishMessage(TopicDeviceController, controlMsg); err != nil {
+	controlPayload := buildControlPayload(controlMsg)
+
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送控制消息给设备方失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, controlMsg); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送控制消息给住户方失败: %v", err)
 	}
 
@@ -647,9 +703,9 @@ func (s *MQTTCallService) HandleCallerAction(callID, action, reason string) erro
 }
 
 // HandleCalleeAction 处理被呼叫方动作
-func (s *MQTTCallService) HandleCalleeAction(callID, action, reason string) error {
+func (s *MQTTCallService) HandleCalleeAction(callID, action, reason, residentID string) error {
 	// 获取会话
-	_, exists := s.CallManager.GetSession(callID)
+	session, exists := s.CallManager.GetSession(callID)
 	if !exists {
 		return fmt.Errorf("会话不存在: %s", callID)
 	}
@@ -713,22 +769,19 @@ func (s *MQTTCallService) HandleCalleeAction(callID, action, reason string) erro
 
 	// 创建控制消息
 	timestamp := time.Now().UnixMilli()
-	controlMsg := ControlMessage{
-		Action:    action,
-		CallID:    callID,
-		Timestamp: timestamp,
-		Reason:    reason,
-	}
+	controlMsg := buildControlMessage(callID, action, reason, timestamp, session, residentID)
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, action, timestamp)
 
 	// 同时发送控制消息给设备端和住户端，确保双方都收到消息
-	if err := s.publishMessage(TopicDeviceController, controlMsg); err != nil {
+	controlPayload := buildControlPayload(controlMsg)
+
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送控制消息给设备方失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, controlMsg); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送控制消息给住户方失败: %v", err)
 	}
 
@@ -747,6 +800,8 @@ func (s *MQTTCallService) HandleCalleeAction(callID, action, reason string) erro
 
 // EndCallSession 结束通话会话
 func (s *MQTTCallService) EndCallSession(callID, reason string) error {
+	session, _ := s.CallManager.GetSession(callID)
+
 	// 通过通道发送结束信号
 	callChannelObj, exists := s.CallChannels.Load(callID)
 	if exists {
@@ -773,22 +828,19 @@ func (s *MQTTCallService) EndCallSession(callID, reason string) error {
 
 	// 向双方发送通话结束通知
 	timestamp := time.Now().UnixMilli()
-	endInfo := ControlMessage{
-		Action:    "hangup",
-		CallID:    callID,
-		Timestamp: timestamp,
-		Reason:    reason,
-	}
+	endInfo := buildControlMessage(callID, "hangup", reason, timestamp, session, "")
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, "hangup", timestamp)
 
 	// 同时发送结束通知给设备端和住户端
-	if err := s.publishMessage(TopicDeviceController, endInfo); err != nil {
+	endPayload := buildControlPayload(endInfo)
+
+	if err := s.publishMessage(TopicDeviceController, endPayload); err != nil {
 		log.Printf("[MQTT] 发送结束通知给设备方失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, endInfo); err != nil {
+	if err := s.publishMessage(TopicResidentController, endPayload); err != nil {
 		log.Printf("[MQTT] 发送结束通知给住户方失败: %v", err)
 	}
 
@@ -1014,7 +1066,7 @@ func (s *MQTTCallService) handleResidentControl(_ mqtt.Client, msg mqtt.Message)
 	s.markMessageProcessed(controlMsg.CallID, controlMsg.Action, controlMsg.Timestamp)
 
 	// 处理控制消息
-	if err := s.HandleCalleeAction(controlMsg.CallID, controlMsg.Action, controlMsg.Reason); err != nil {
+	if err := s.HandleCalleeAction(controlMsg.CallID, controlMsg.Action, controlMsg.Reason, controlMsg.ResidentID); err != nil {
 		log.Printf("[MQTT] 处理住户控制消息失败: %v", err)
 	}
 }
@@ -1052,21 +1104,26 @@ func (s *MQTTCallService) InitiateCallToAll(deviceID string) (string, []string, 
 
 	// 生成唯一的通话ID
 	callID := uuid.New().String()
+	callUnix := time.Now().Unix()
+	primaryResidentID := fmt.Sprintf("%d", device.Household.Residents[0].ID)
+	roomID := BuildSharedTRTCRoomID(deviceID, primaryResidentID, callUnix)
 
 	// 收集所有居民ID
 	residentIDs := make([]string, 0, len(device.Household.Residents))
 
+	// 多住户呼叫共享同一个会话和房间号，避免相同callID重复建会话。
+	sessionTRTCInfo := model.TRTCInfo{
+		RoomID:     roomID,
+		RoomIDType: "string",
+		SDKAppID:   s.Config.TencentSDKAppID,
+	}
+	if _, err := s.CallManager.CreateSession(callID, deviceID, "", sessionTRTCInfo); err != nil {
+		return "", nil, fmt.Errorf("创建通话会话失败: %v", err)
+	}
+
 	// 向每个居民发送呼叫通知
 	for _, resident := range device.Household.Residents {
 		residentID := fmt.Sprintf("%d", resident.ID)
-		residentIDs = append(residentIDs, residentID)
-
-		// 创建TRTC房间并生成签名
-		rtcRoomID, err := s.RTCService.CreateVideoCall(deviceID, residentID)
-		if err != nil {
-			log.Printf("[MQTT] 为居民 %s 创建TRTC房间失败: %v", residentID, err)
-			continue
-		}
 
 		// 为住户生成UserSig
 		tokenInfo, err := s.RTCService.GetUserSig(residentID)
@@ -1077,18 +1134,11 @@ func (s *MQTTCallService) InitiateCallToAll(deviceID string) (string, []string, 
 
 		// 创建TRTC信息
 		trtcInfo := model.TRTCInfo{
-			RoomID:     rtcRoomID,
+			RoomID:     roomID,
 			RoomIDType: "string",
 			SDKAppID:   tokenInfo.SDKAppID,
 			UserID:     tokenInfo.UserID,
 			UserSig:    tokenInfo.UserSig,
-		}
-
-		// 创建通话会话
-		_, err = s.CallManager.CreateSession(callID, deviceID, residentID, trtcInfo)
-		if err != nil {
-			log.Printf("[MQTT] 为居民 %s 创建通话会话失败: %v", residentID, err)
-			continue
 		}
 
 		// 发送呼入通知给住户
@@ -1112,11 +1162,16 @@ func (s *MQTTCallService) InitiateCallToAll(deviceID string) (string, []string, 
 			continue
 		}
 
+		residentIDs = append(residentIDs, residentID)
+
 		// 创建通话记录
 		s.createCallRecord(callID, deviceID, residentID, "ringing")
 	}
 
 	if len(residentIDs) == 0 {
+		if _, err := s.CallManager.EndSession(callID, "no_available_resident"); err != nil {
+			log.Printf("[MQTT] 清理空通话会话失败: %v", err)
+		}
 		return "", nil, fmt.Errorf("没有成功向任何居民发起呼叫")
 	}
 
@@ -1125,21 +1180,19 @@ func (s *MQTTCallService) InitiateCallToAll(deviceID string) (string, []string, 
 
 	// 创建振铃控制消息
 	timestamp := time.Now().UnixMilli()
-	ringControl := ControlMessage{
-		Action:    "ringing",
-		CallID:    callID,
-		Timestamp: timestamp,
-	}
+	ringControl := buildControlMessage(callID, "ringing", "", timestamp, s.mustGetSession(callID), "")
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, "ringing", timestamp)
 
 	// 同时发送振铃消息给设备和住户
-	if err := s.publishMessage(TopicDeviceController, ringControl); err != nil {
+	controlPayload := buildControlPayload(ringControl)
+
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给设备失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, ringControl); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给住户失败: %v", err)
 	}
 
@@ -1150,9 +1203,8 @@ func (s *MQTTCallService) InitiateCallToAll(deviceID string) (string, []string, 
 		TargetResidentIDs: residentIDs,
 		Timestamp:         time.Now().UnixMilli(),
 		TencentRTC: TRTCInfo{
-			// 使用第一个住户的TRTC信息给设备方用于连接
 			RoomIDType: "string",
-			RoomID:     "room_" + deviceID + "_" + residentIDs[0],
+			RoomID:     roomID,
 			SDKAppID:   s.Config.TencentSDKAppID,
 			UserID:     deviceID,
 		},
@@ -1195,21 +1247,26 @@ func (s *MQTTCallService) InitiateCallToHousehold(deviceID string, householdNumb
 
 	// 生成唯一的通话ID
 	callID := uuid.New().String()
+	callUnix := time.Now().Unix()
+	primaryResidentID := fmt.Sprintf("%d", residents[0].ID)
+	roomID := BuildSharedTRTCRoomID(deviceID, primaryResidentID, callUnix)
 
 	// 收集所有居民ID
 	residentIDs := make([]string, 0, len(residents))
 
+	// 多住户呼叫共享同一个会话和房间号，避免相同callID重复建会话。
+	sessionTRTCInfo := model.TRTCInfo{
+		RoomID:     roomID,
+		RoomIDType: "string",
+		SDKAppID:   s.Config.TencentSDKAppID,
+	}
+	if _, err := s.CallManager.CreateSession(callID, deviceID, "", sessionTRTCInfo); err != nil {
+		return "", nil, fmt.Errorf("创建通话会话失败: %v", err)
+	}
+
 	// 向每个居民发送呼叫通知
 	for _, resident := range residents {
 		residentID := fmt.Sprintf("%d", resident.ID)
-		residentIDs = append(residentIDs, residentID)
-
-		// 创建TRTC房间并生成签名
-		rtcRoomID, err := s.RTCService.CreateVideoCall(deviceID, residentID)
-		if err != nil {
-			log.Printf("[MQTT] 为居民 %s 创建TRTC房间失败: %v", residentID, err)
-			continue
-		}
 
 		// 为住户生成UserSig
 		tokenInfo, err := s.RTCService.GetUserSig(residentID)
@@ -1220,18 +1277,11 @@ func (s *MQTTCallService) InitiateCallToHousehold(deviceID string, householdNumb
 
 		// 创建TRTC信息
 		trtcInfo := model.TRTCInfo{
-			RoomID:     rtcRoomID,
+			RoomID:     roomID,
 			RoomIDType: "string",
 			SDKAppID:   tokenInfo.SDKAppID,
 			UserID:     tokenInfo.UserID,
 			UserSig:    tokenInfo.UserSig,
-		}
-
-		// 创建通话会话
-		_, err = s.CallManager.CreateSession(callID, deviceID, residentID, trtcInfo)
-		if err != nil {
-			log.Printf("[MQTT] 为居民 %s 创建通话会话失败: %v", residentID, err)
-			continue
 		}
 
 		// 发送呼入通知给住户
@@ -1255,11 +1305,16 @@ func (s *MQTTCallService) InitiateCallToHousehold(deviceID string, householdNumb
 			continue
 		}
 
+		residentIDs = append(residentIDs, residentID)
+
 		// 创建通话记录
 		s.createCallRecord(callID, deviceID, residentID, "ringing")
 	}
 
 	if len(residentIDs) == 0 {
+		if _, err := s.CallManager.EndSession(callID, "no_available_resident"); err != nil {
+			log.Printf("[MQTT] 清理空通话会话失败: %v", err)
+		}
 		return "", nil, fmt.Errorf("没有成功向任何居民发起呼叫")
 	}
 
@@ -1268,21 +1323,19 @@ func (s *MQTTCallService) InitiateCallToHousehold(deviceID string, householdNumb
 
 	// 创建振铃控制消息
 	timestamp := time.Now().UnixMilli()
-	ringControl := ControlMessage{
-		Action:    "ringing",
-		CallID:    callID,
-		Timestamp: timestamp,
-	}
+	ringControl := buildControlMessage(callID, "ringing", "", timestamp, s.mustGetSession(callID), "")
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, "ringing", timestamp)
 
 	// 同时发送振铃消息给设备和住户
-	if err := s.publishMessage(TopicDeviceController, ringControl); err != nil {
+	controlPayload := buildControlPayload(ringControl)
+
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给设备失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, ringControl); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给住户失败: %v", err)
 	}
 
@@ -1293,9 +1346,8 @@ func (s *MQTTCallService) InitiateCallToHousehold(deviceID string, householdNumb
 		TargetResidentIDs: residentIDs,
 		Timestamp:         time.Now().UnixMilli(),
 		TencentRTC: TRTCInfo{
-			// 使用第一个住户的TRTC信息给设备方用于连接
 			RoomIDType: "string",
-			RoomID:     "room_" + deviceID + "_" + residentIDs[0],
+			RoomID:     roomID,
 			SDKAppID:   s.Config.TencentSDKAppID,
 			UserID:     deviceID,
 		},
@@ -1321,15 +1373,10 @@ func (s *MQTTCallService) InitiateCallByPhone(deviceID string, phone string) (st
 
 	// 生成唯一的通话ID
 	callID := uuid.New().String()
-
 	// 获取住户ID
 	residentID := fmt.Sprintf("%d", resident.ID)
-
-	// 创建TRTC房间并生成签名
-	rtcRoomID, err := s.RTCService.CreateVideoCall(deviceID, residentID)
-	if err != nil {
-		return "", nil, fmt.Errorf("创建TRTC房间失败: %v", err)
-	}
+	callUnix := time.Now().Unix()
+	roomID := BuildSharedTRTCRoomID(deviceID, residentID, callUnix)
 
 	// 为住户生成UserSig
 	tokenInfo, err := s.RTCService.GetUserSig(residentID)
@@ -1339,7 +1386,7 @@ func (s *MQTTCallService) InitiateCallByPhone(deviceID string, phone string) (st
 
 	// 创建TRTC信息
 	trtcInfo := model.TRTCInfo{
-		RoomID:     rtcRoomID,
+		RoomID:     roomID,
 		RoomIDType: "string",
 		SDKAppID:   tokenInfo.SDKAppID,
 		UserID:     tokenInfo.UserID,
@@ -1377,21 +1424,19 @@ func (s *MQTTCallService) InitiateCallByPhone(deviceID string, phone string) (st
 
 	// 创建振铃控制消息
 	timestamp := time.Now().UnixMilli()
-	ringControl := ControlMessage{
-		Action:    "ringing",
-		CallID:    callID,
-		Timestamp: timestamp,
-	}
+	ringControl := buildControlMessage(callID, "ringing", "", timestamp, s.mustGetSession(callID), residentID)
 
 	// 先标记此消息为已处理，防止我们自己发出的消息被重复处理
 	s.markMessageProcessed(callID, "ringing", timestamp)
 
 	// 同时发送振铃消息给设备和住户
-	if err := s.publishMessage(TopicDeviceController, ringControl); err != nil {
+	controlPayload := buildControlPayload(ringControl)
+
+	if err := s.publishMessage(TopicDeviceController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给设备失败: %v", err)
 	}
 
-	if err := s.publishMessage(TopicResidentController, ringControl); err != nil {
+	if err := s.publishMessage(TopicResidentController, controlPayload); err != nil {
 		log.Printf("[MQTT] 发送振铃控制消息给住户失败: %v", err)
 	}
 

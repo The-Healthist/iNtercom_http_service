@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"fmt"
@@ -27,6 +27,12 @@ type TencentRTCTokenInfo struct {
 	UserSig     string    `json:"user_sig"`
 	ExpireTime  time.Time `json:"expire_time"`
 	RequestTime time.Time `json:"request_time"`
+}
+
+// BuildSharedTRTCRoomID 为同一通呼叫生成双方共享的房间号。
+// 保持原有 room_<device>_<resident>_<unix> 风格，避免前端联调格式变化。
+func BuildSharedTRTCRoomID(deviceID, residentID string, unixSeconds int64) string {
+	return fmt.Sprintf("room_%s_%s_%d", deviceID, residentID, unixSeconds)
 }
 
 // NewTencentRTCService 创建一个新的腾讯云TRTC服务

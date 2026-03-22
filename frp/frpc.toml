@@ -1,11 +1,18 @@
 serverAddr = "43.139.69.15"
-serverPort = 7000 
-auth.method = "token"
-auth.token = "{frp_token}"
+  serverPort = 7000
+  auth.method = "token"
+  auth.token = "{frp_token}"
 
-[[proxies]]
-name = "intercom_backend"
-type = "tcp"
-localIP = "host.docker.internal" # 注意：因为 frpc 跑在 Docker 里，需用 host.docker.internal 才能访问到 Mac 宿主机
-localPort = 20033 # 本地 HTTP 服务的实际端口
-remotePort = 20033
+  [[proxies]]
+  name = "intercom_backend"
+  type = "tcp"
+  localIP = "host.docker.internal"
+  localPort = 20033
+  remotePort = 20033
+
+  [[proxies]]
+  name = "pos_web_callback_test"
+  type = "tcp"
+  localIP = "host.docker.internal"
+  localPort = 20034
+  remotePort = 20034

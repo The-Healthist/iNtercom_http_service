@@ -1,7 +1,6 @@
-﻿package handler
+package handler
 
 import (
-	"fmt"
 	"intercom_http_service/internal/config"
 	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/service"
@@ -47,10 +46,11 @@ type (
 
 	// CallActionRequest 通话控制请求
 	CallActionRequest struct {
-		Action    string `json:"action" binding:"required" example:"answered"`
-		CallID    string `json:"call_id" binding:"required" example:"mqtt-call-20250510-abcdef123456"`
-		Timestamp int64  `json:"timestamp,omitempty" example:"1651234567890"`
-		Reason    string `json:"reason,omitempty" example:"user_busy"`
+		Action     string `json:"action" binding:"required" example:"answered"`
+		CallID     string `json:"call_id" binding:"required" example:"mqtt-call-20250510-abcdef123456"`
+		Timestamp  int64  `json:"timestamp,omitempty" example:"1651234567890"`
+		Reason     string `json:"reason,omitempty" example:"user_busy"`
+		ResidentID string `json:"resident_id,omitempty" example:"6"`
 	}
 
 	// GetCallSessionRequest 获取通话会话请求
@@ -202,6 +202,12 @@ func (c *MQTTCallController) InitiateCall() {
 		},
 	}
 
+	// 优先复用服务层实际会话中的房间号，避免与MQTT下发数据不一致。
+	roomID := ""
+	if session, exists := mqttCallService.GetCallSession(callID); exists {
+		roomID = session.TRTCInfo.RoomID
+	}
+
 	// 如果系统配置了腾讯云RTC，添加RTC信息
 	config := c.Container.GetService("config").(*config.Config)
 	if config.TencentRTCEnabled {
@@ -212,11 +218,15 @@ func (c *MQTTCallController) InitiateCall() {
 		deviceUserID := req.DeviceID
 		tokenInfo, err := rtcService.GetUserSig(deviceUserID)
 		if err == nil {
+			if roomID == "" && len(targetResidentIDs) > 0 {
+				roomID = service.BuildSharedTRTCRoomID(req.DeviceID, targetResidentIDs[0], timestamp/1000)
+			}
+
 			response.TencentRTC = &TRTCInfo{
 				SDKAppID:   config.TencentSDKAppID,
 				UserID:     deviceUserID,
 				UserSig:    tokenInfo.UserSig,
-				RoomID:     "room_" + req.DeviceID + "_" + targetResidentIDs[0] + "_" + fmt.Sprintf("%d", timestamp/1000),
+				RoomID:     roomID,
 				RoomIDType: "string",
 			}
 		}
@@ -285,7 +295,7 @@ func (c *MQTTCallController) CalleeAction() {
 	}
 
 	mqttCallService := c.Container.GetService("mqtt_call").(service.InterfaceMQTTCallService)
-	if err := mqttCallService.HandleCalleeAction(req.CallID, req.Action, req.Reason); err != nil {
+	if err := mqttCallService.HandleCalleeAction(req.CallID, req.Action, req.Reason, req.ResidentID); err != nil {
 		c.HandleError(http.StatusInternalServerError, "处理被呼叫方动作失败", err)
 		return
 	}
