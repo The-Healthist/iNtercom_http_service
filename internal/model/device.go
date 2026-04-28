@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 // DeviceStatus represents the status of a door access device
 type DeviceStatus string
@@ -13,11 +13,11 @@ const (
 type Device struct {
 	BaseModel
 	Name         string       `gorm:"type:varchar(50);not null" json:"name"`
-	SerialNumber string       `gorm:"type:varchar(50);unique;not null" json:"serial_number"`
+	SerialNumber string       `gorm:"type:varchar(50);uniqueIndex;not null" json:"serial_number"`
 	Location     string       `gorm:"type:varchar(100)" json:"location"`
 	Status       DeviceStatus `gorm:"type:varchar(20);default:'offline'" json:"status"`
-	BuildingID   uint         `json:"building_id,omitempty"`  // 关联的楼号ID
-	HouseholdID  uint         `json:"household_id,omitempty"` // 关联的户号ID
+	BuildingID   uint         `gorm:"index:idx_devices_building_id" json:"building_id,omitempty"`   // 关联的楼号ID
+	HouseholdID  uint         `gorm:"index:idx_devices_household_id" json:"household_id,omitempty"` // 关联的户号ID
 
 	// Relations - 关联关系
 	Staff         []PropertyStaff `gorm:"many2many:staff_device_relations;" json:"staff,omitempty"` // 通过关系表关联的物业人员列表

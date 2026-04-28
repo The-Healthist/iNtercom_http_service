@@ -135,14 +135,25 @@ func (s *HouseholdService) GetHouseholdByID(id uint) (*model.Household, error) {
 	return &household, nil
 }
 
+func (s *HouseholdService) getHouseholdBaseByID(id uint) (*model.Household, error) {
+	var household model.Household
+	if err := s.DB.First(&household, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("户号不存在")
+		}
+		return nil, err
+	}
+	return &household, nil
+}
+
 // 4. CreateHousehold 创建新户号
 func (s *HouseholdService) CreateHousehold(household *model.Household) error {
 	// 验证户号唯一性（同一楼号下户号编号不能重复）
-	var count int64
-	if err := s.DB.Model(&model.Household{}).Where("building_id = ? AND household_number = ?", household.BuildingID, household.HouseholdNumber).Count(&count).Error; err != nil {
+	exists, err := existsByQuery(s.DB, &model.Household{}, "building_id = ? AND household_number = ?", household.BuildingID, household.HouseholdNumber)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if exists {
 		return errors.New("该楼号下已存在相同户号")
 	}
 
@@ -204,6 +215,7 @@ func (s *HouseholdService) BatchCreateHouseholds(buildingID uint, items []BatchH
 		existMap[item.HouseholdNumber] = true
 	}
 
+	pending := make([]model.Household, 0, len(normalized))
 	for _, item := range normalized {
 		householdNumber := item.HouseholdNumber
 
@@ -212,7 +224,8 @@ func (s *HouseholdService) BatchCreateHouseholds(buildingID uint, items []BatchH
 			continue
 		}
 
-		h := model.Household{
+		existMap[householdNumber] = true
+		pending = append(pending, model.Household{
 			BuildingID:      buildingID,
 			HouseholdNumber: householdNumber,
 			HouseCode:       item.HouseCode,
@@ -220,23 +233,24 @@ func (s *HouseholdService) BatchCreateHouseholds(buildingID uint, items []BatchH
 			UnitCode:        item.UnitCode,
 			HouseholdExtID:  item.HouseholdExtID,
 			Status:          "active",
-		}
-
-		if err := s.DB.Create(&h).Error; err != nil {
-			failed = append(failed, householdNumber)
-			continue
-		}
-
-		existMap[householdNumber] = true
-		created = append(created, h)
+		})
 	}
 
+	if len(pending) == 0 {
+		return created, skipped, failed, nil
+	}
+
+	if err := s.DB.CreateInBatches(&pending, 100).Error; err != nil {
+		return nil, nil, nil, err
+	}
+
+	created = append(created, pending...)
 	return created, skipped, failed, nil
 }
 
 // 5. UpdateHousehold 更新户号信息
 func (s *HouseholdService) UpdateHousehold(id uint, updates map[string]interface{}) (*model.Household, error) {
-	household, err := s.GetHouseholdByID(id)
+	household, err := s.getHouseholdBaseByID(id)
 	if err != nil {
 		return nil, err
 	}
@@ -259,11 +273,11 @@ func (s *HouseholdService) UpdateHousehold(id uint, updates map[string]interface
 		}
 
 		// 检查唯一性
-		var count int64
-		if err := s.DB.Model(&model.Household{}).Where("building_id = ? AND household_number = ? AND id != ?", checkBuildingID, checkHouseholdNumber, id).Count(&count).Error; err != nil {
+		exists, err := existsByQuery(s.DB, &model.Household{}, "building_id = ? AND household_number = ? AND id != ?", checkBuildingID, checkHouseholdNumber, id)
+		if err != nil {
 			return nil, err
 		}
-		if count > 0 {
+		if exists {
 			return nil, errors.New("该楼号下已存在相同户号")
 		}
 	}
@@ -278,26 +292,26 @@ func (s *HouseholdService) UpdateHousehold(id uint, updates map[string]interface
 
 // 6. DeleteHousehold 删除户号
 func (s *HouseholdService) DeleteHousehold(id uint) error {
-	household, err := s.GetHouseholdByID(id)
+	household, err := s.getHouseholdBaseByID(id)
 	if err != nil {
 		return err
 	}
 
 	// 检查是否有关联的居民
-	var residentCount int64
-	if err := s.DB.Model(&model.Resident{}).Where("household_id = ?", id).Count(&residentCount).Error; err != nil {
+	hasResidents, err := existsByQuery(s.DB, &model.Resident{}, "household_id = ?", id)
+	if err != nil {
 		return err
 	}
-	if residentCount > 0 {
+	if hasResidents {
 		return errors.New("该户号下存在居民，无法删除")
 	}
 
 	// 检查是否有关联的设备
-	var deviceCount int64
-	if err := s.DB.Model(&model.Device{}).Where("household_id = ?", id).Count(&deviceCount).Error; err != nil {
+	hasDevices, err := existsByQuery(s.DB, &model.Device{}, "household_id = ?", id)
+	if err != nil {
 		return err
 	}
-	if deviceCount > 0 {
+	if hasDevices {
 		return errors.New("该户号下存在关联设备，请先解除关联")
 	}
 
@@ -316,20 +330,20 @@ func (s *HouseholdService) RollbackBatchHouseholds(buildingID uint, ids []uint) 
 			continue
 		}
 
-		var residentCount int64
-		if err := s.DB.Model(&model.Resident{}).Where("household_id = ?", id).Count(&residentCount).Error; err != nil {
+		hasResidents, err := existsByQuery(s.DB, &model.Resident{}, "household_id = ?", id)
+		if err != nil {
 			return nil, nil, err
 		}
-		if residentCount > 0 {
+		if hasResidents {
 			blocked[id] = "存在关联居民"
 			continue
 		}
 
-		var deviceCount int64
-		if err := s.DB.Model(&model.Device{}).Where("household_id = ?", id).Count(&deviceCount).Error; err != nil {
+		hasDevices, err := existsByQuery(s.DB, &model.Device{}, "household_id = ?", id)
+		if err != nil {
 			return nil, nil, err
 		}
-		if deviceCount > 0 {
+		if hasDevices {
 			blocked[id] = "存在关联设备"
 			continue
 		}
@@ -348,7 +362,7 @@ func (s *HouseholdService) RollbackBatchHouseholds(buildingID uint, ids []uint) 
 // 7. GetHouseholdDevices 获取户号关联的设备
 func (s *HouseholdService) GetHouseholdDevices(householdID uint) ([]model.Device, error) {
 	// 检查户号是否存在
-	if _, err := s.GetHouseholdByID(householdID); err != nil {
+	if _, err := s.getHouseholdBaseByID(householdID); err != nil {
 		return nil, err
 	}
 
@@ -364,7 +378,7 @@ func (s *HouseholdService) GetHouseholdDevices(householdID uint) ([]model.Device
 // 8. GetHouseholdResidents 获取户号下的居民
 func (s *HouseholdService) GetHouseholdResidents(householdID uint) ([]model.Resident, error) {
 	// 检查户号是否存在
-	if _, err := s.GetHouseholdByID(householdID); err != nil {
+	if _, err := s.getHouseholdBaseByID(householdID); err != nil {
 		return nil, err
 	}
 
@@ -379,7 +393,7 @@ func (s *HouseholdService) GetHouseholdResidents(householdID uint) ([]model.Resi
 // 9. AssociateHouseholdWithDevice 关联户号与设备
 func (s *HouseholdService) AssociateHouseholdWithDevice(householdID, deviceID uint) error {
 	// 检查户号是否存在
-	if _, err := s.GetHouseholdByID(householdID); err != nil {
+	if _, err := s.getHouseholdBaseByID(householdID); err != nil {
 		return err
 	}
 
@@ -403,7 +417,7 @@ func (s *HouseholdService) AssociateHouseholdWithDevice(householdID, deviceID ui
 // 10. RemoveHouseholdDeviceAssociation 解除户号与设备的关联
 func (s *HouseholdService) RemoveHouseholdDeviceAssociation(householdID, deviceID uint) error {
 	// 检查户号是否存在
-	if _, err := s.GetHouseholdByID(householdID); err != nil {
+	if _, err := s.getHouseholdBaseByID(householdID); err != nil {
 		return err
 	}
 

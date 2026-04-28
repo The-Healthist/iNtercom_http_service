@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"fmt"
@@ -24,6 +24,7 @@ type Config struct {
 	DBPassword      string
 	DBName          string
 	DBPort          string
+	DBLogLevel      string
 	DBMigrationMode string // 数据库迁移模式: "auto"(默认), "alter"(修改), "drop"(删除重建)
 
 	// Server
@@ -88,6 +89,7 @@ func LoadConfig() *Config {
 		DBPassword:      getEnvRequired(prefix + "DB_PASSWORD"),
 		DBName:          getEnvRequired(prefix + "DB_NAME"),
 		DBPort:          getEnvRequired(prefix + "DB_PORT"),
+		DBLogLevel:      getEnv(prefix+"DB_LOG_LEVEL", getEnv("DB_LOG_LEVEL", "warn")),
 		DBMigrationMode: getEnv(prefix+"DB_MIGRATION_MODE", "auto"),
 
 		// Server config
@@ -133,7 +135,7 @@ func GetConfig() *Config {
 
 // GetDSN returns the database connection string
 func (c *Config) GetDSN() string {
-	return c.DBUser + ":" + c.DBPassword + "@tcp(" + c.DBHost + ":" + c.DBPort + ")/" + c.DBName + "?charset=utf8mb4&parseTime=True&loc=Local&allowNativePasswords=true&multiStatements=true"
+	return c.DBUser + ":" + c.DBPassword + "@tcp(" + c.DBHost + ":" + c.DBPort + ")/" + c.DBName + "?charset=utf8mb4&parseTime=True&loc=Local&allowNativePasswords=true&multiStatements=true&interpolateParams=true&timeout=5s&readTimeout=5s&writeTimeout=5s"
 }
 
 // GetRedisAddr returns the Redis address

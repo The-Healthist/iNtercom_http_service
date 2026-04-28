@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"time"
@@ -17,11 +17,11 @@ const (
 type CallRecord struct {
 	BaseModel
 	CallID     string     `gorm:"type:varchar(100);index" json:"call_id"` // 通话唯一标识
-	DeviceID   uint       `json:"device_id"`
-	ResidentID uint       `json:"resident_id"`
+	DeviceID   uint       `gorm:"index:idx_call_records_device_id" json:"device_id"`
+	ResidentID uint       `gorm:"index:idx_call_records_resident_id" json:"resident_id"`
 	CallStatus CallStatus `gorm:"type:varchar(20)" json:"call_status"`
-	Timestamp  time.Time  `json:"timestamp"` // 通话开始时间
-	Duration   int        `json:"duration"`  // 通话时长
+	Timestamp  time.Time  `gorm:"index:idx_call_records_timestamp" json:"timestamp"` // 通话开始时间
+	Duration   int        `json:"duration"`                                          // 通话时长
 
 	// Relations
 	Device   *Device   `gorm:"foreignKey:DeviceID" json:"device,omitempty"`

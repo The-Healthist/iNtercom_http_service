@@ -20,10 +20,26 @@
 
 ## 认证说明
 
-除了登录接口外，所有 API 接口都需要在请求头中包含有效的 JWT 令牌进行认证：
+系统当前文档包含两套认证方式：
 
-```
+### 1. 后台账号认证
+
+适用于后台管理接口，登录后在请求头中携带：
+
+```text
 Authorization: Bearer <your_token>
+```
+
+### 2. 开放平台应用认证
+
+适用于第三方对接场景：
+
+1. 先调用 `/api/open/auth/token`
+2. 使用 `Access ID + Access Key` 本地签名换取短期 Token
+3. 再通过以下方式访问开放接口：
+
+```text
+Authorization: Bearer <app_token>
 ```
 
 ## 响应格式

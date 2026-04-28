@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"time"
@@ -25,10 +25,10 @@ const (
 // AccessLog represents door access logs
 type AccessLog struct {
 	ID         uint         `gorm:"primaryKey" json:"id"`
-	DeviceID   uint         `json:"device_id"`
-	ResidentID uint         `json:"resident_id"`
+	DeviceID   uint         `gorm:"index:idx_access_logs_device_id" json:"device_id"`
+	ResidentID uint         `gorm:"index:idx_access_logs_resident_id" json:"resident_id"`
 	Result     AccessResult `gorm:"type:varchar(20)" json:"result"`
-	Timestamp  time.Time    `json:"timestamp"`
+	Timestamp  time.Time    `gorm:"index:idx_access_logs_timestamp" json:"timestamp"`
 	Method     AccessMethod `gorm:"type:varchar(20)" json:"method"`
 
 	// Relations

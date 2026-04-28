@@ -1,9 +1,9 @@
-﻿package handler
+package handler
 
 import (
+	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/errcode"
 	"net/http"
 	"strconv"
 	"time"
@@ -283,21 +283,11 @@ func (c *DeviceController) CreateDevice() {
 		householdService := c.Container.GetService("household").(service.InterfaceHouseholdService)
 
 		// 关联第一个户号
-		if len(req.HouseholdIDs) > 0 {
-			householdID := req.HouseholdIDs[0]
-			// 检查户号是否存在
-			_, err := householdService.GetHouseholdByID(householdID)
-			if err == nil {
-				// 使用关联API而不是直接设置household_id
-				if err := householdService.AssociateHouseholdWithDevice(householdID, device.ID); err != nil {
-					c.Ctx.Error(err)
-				} else {
-					// 关联成功后，设备的household_id会被更新
-					device, _ = deviceService.GetDeviceByID(device.ID)
-				}
-			} else {
-				c.Ctx.Error(err)
-			}
+		householdID := req.HouseholdIDs[0]
+		if err := householdService.AssociateHouseholdWithDevice(householdID, device.ID); err != nil {
+			c.Ctx.Error(err)
+		} else {
+			device.HouseholdID = householdID
 		}
 	}
 

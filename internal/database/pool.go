@@ -1,9 +1,10 @@
-﻿package database
+package database
 
 import (
 	"context"
 	"intercom_http_service/internal/config"
 	"log"
+	"strings"
 	"time"
 
 	"gorm.io/driver/mysql"
@@ -24,7 +25,7 @@ type ConnectionPool struct {
 func NewConnectionPool(cfg *config.Config) (*ConnectionPool, error) {
 	// 创建数据库连接
 	db, err := gorm.Open(mysql.Open(cfg.GetDSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(resolveLogLevel(cfg.DBLogLevel)),
 	})
 	if err != nil {
 		return nil, err
@@ -130,4 +131,17 @@ func (p *ConnectionPool) HealthCheck() error {
 // GetDB 获取GORM数据库实例
 func (p *ConnectionPool) GetDB() *gorm.DB {
 	return p.DB
+}
+
+func resolveLogLevel(level string) logger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "silent":
+		return logger.Silent
+	case "error":
+		return logger.Error
+	case "info":
+		return logger.Info
+	default:
+		return logger.Warn
+	}
 }

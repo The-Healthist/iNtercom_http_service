@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"errors"
@@ -56,25 +56,36 @@ func (s *ResidentService) GetResidentByID(id uint) (*model.Resident, error) {
 	return &resident, nil
 }
 
+func (s *ResidentService) getResidentBaseByID(id uint) (*model.Resident, error) {
+	var resident model.Resident
+	if err := s.DB.First(&resident, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("居民不存在")
+		}
+		return nil, err
+	}
+	return &resident, nil
+}
+
 // 3 CreateResident 创建新居民
 func (s *ResidentService) CreateResident(resident *model.Resident) error {
 	// 验证手机号唯一性
-	var count int64
-	if err := s.DB.Model(&model.Resident{}).Where("phone = ?", resident.Phone).Count(&count).Error; err != nil {
+	exists, err := existsByQuery(s.DB, &model.Resident{}, "phone = ?", resident.Phone)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if exists {
 		return errors.New("手机号已被使用")
 	}
 
 	// 验证户号是否存在
 	if resident.HouseholdID > 0 {
-		var household model.Household
-		if err := s.DB.First(&household, resident.HouseholdID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.New("户号不存在")
-			}
+		exists, err := existsByQuery(s.DB, &model.Household{}, "id = ?", resident.HouseholdID)
+		if err != nil {
 			return err
+		}
+		if !exists {
+			return errors.New("户号不存在")
 		}
 	} else {
 		return errors.New("必须提供有效的户号ID")
@@ -85,30 +96,30 @@ func (s *ResidentService) CreateResident(resident *model.Resident) error {
 
 // 4 UpdateResident 更新居民信息
 func (s *ResidentService) UpdateResident(id uint, updates map[string]interface{}) (*model.Resident, error) {
-	resident, err := s.GetResidentByID(id)
+	resident, err := s.getResidentBaseByID(id)
 	if err != nil {
 		return nil, err
 	}
 
 	// 如果更新手机号，需要检查唯一性
 	if phone, ok := updates["phone"].(string); ok && phone != resident.Phone {
-		var count int64
-		if err := s.DB.Model(&model.Resident{}).Where("phone = ? AND id != ?", phone, id).Count(&count).Error; err != nil {
+		exists, err := existsByQuery(s.DB, &model.Resident{}, "phone = ? AND id != ?", phone, id)
+		if err != nil {
 			return nil, err
 		}
-		if count > 0 {
+		if exists {
 			return nil, errors.New("手机号已被其他居民使用")
 		}
 	}
 
 	// 如果更新户号ID，需要验证户号是否存在
 	if householdID, ok := updates["household_id"].(uint); ok {
-		var household model.Household
-		if err := s.DB.First(&household, householdID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errors.New("户号不存在")
-			}
+		exists, err := existsByQuery(s.DB, &model.Household{}, "id = ?", householdID)
+		if err != nil {
 			return nil, err
+		}
+		if !exists {
+			return nil, errors.New("户号不存在")
 		}
 	}
 
@@ -122,7 +133,7 @@ func (s *ResidentService) UpdateResident(id uint, updates map[string]interface{}
 
 // 5 DeleteResident 删除居民
 func (s *ResidentService) DeleteResident(id uint) error {
-	resident, err := s.GetResidentByID(id)
+	resident, err := s.getResidentBaseByID(id)
 	if err != nil {
 		return err
 	}

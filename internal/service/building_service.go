@@ -1,9 +1,9 @@
-﻿package service
+package service
 
 import (
 	"errors"
-	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/config"
+	"intercom_http_service/internal/model"
 
 	"gorm.io/gorm"
 )
@@ -69,11 +69,11 @@ func (s *BuildingService) GetBuildingByID(id uint) (*model.Building, error) {
 // 3. CreateBuilding 创建新楼号
 func (s *BuildingService) CreateBuilding(building *model.Building) error {
 	// 验证楼号编码唯一性
-	var count int64
-	if err := s.DB.Model(&model.Building{}).Where("building_code = ?", building.BuildingCode).Count(&count).Error; err != nil {
+	exists, err := existsByQuery(s.DB, &model.Building{}, "building_code = ?", building.BuildingCode)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if exists {
 		return errors.New("楼号编码已存在")
 	}
 
@@ -94,11 +94,11 @@ func (s *BuildingService) UpdateBuilding(id uint, updates map[string]interface{}
 
 	// 如果更新楼号编码，需要检查唯一性
 	if buildingCode, ok := updates["building_code"].(string); ok && buildingCode != building.BuildingCode {
-		var count int64
-		if err := s.DB.Model(&model.Building{}).Where("building_code = ? AND id != ?", buildingCode, id).Count(&count).Error; err != nil {
+		exists, err := existsByQuery(s.DB, &model.Building{}, "building_code = ? AND id != ?", buildingCode, id)
+		if err != nil {
 			return nil, err
 		}
-		if count > 0 {
+		if exists {
 			return nil, errors.New("楼号编码已存在")
 		}
 	}
@@ -113,26 +113,29 @@ func (s *BuildingService) UpdateBuilding(id uint, updates map[string]interface{}
 
 // 5. DeleteBuilding 删除楼号
 func (s *BuildingService) DeleteBuilding(id uint) error {
-	building, err := s.GetBuildingByID(id)
-	if err != nil {
+	building := &model.Building{}
+	if err := s.DB.First(building, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("楼号不存在")
+		}
 		return err
 	}
 
 	// 检查是否有关联的户号
-	var householdCount int64
-	if err := s.DB.Model(&model.Household{}).Where("building_id = ?", id).Count(&householdCount).Error; err != nil {
+	hasHouseholds, err := existsByQuery(s.DB, &model.Household{}, "building_id = ?", id)
+	if err != nil {
 		return err
 	}
-	if householdCount > 0 {
+	if hasHouseholds {
 		return errors.New("该楼号下存在户号，无法删除")
 	}
 
 	// 检查是否有关联的设备
-	var deviceCount int64
-	if err := s.DB.Model(&model.Device{}).Where("building_id = ?", id).Count(&deviceCount).Error; err != nil {
+	hasDevices, err := existsByQuery(s.DB, &model.Device{}, "building_id = ?", id)
+	if err != nil {
 		return err
 	}
-	if deviceCount > 0 {
+	if hasDevices {
 		return errors.New("该楼号下存在设备，无法删除")
 	}
 

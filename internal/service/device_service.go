@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"errors"
@@ -74,14 +74,26 @@ func (s *DeviceService) GetDeviceByID(id uint) (*model.Device, error) {
 	return &device, nil
 }
 
+func (s *DeviceService) getDeviceBaseByID(id uint) (*model.Device, error) {
+	var device model.Device
+	if err := s.DB.First(&device, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("设备不存在")
+		}
+		return nil, err
+	}
+
+	return &device, nil
+}
+
 // 3 CreateDevice 创建新设备
 func (s *DeviceService) CreateDevice(device *model.Device) error {
 	// 验证序列号唯一性
-	var count int64
-	if err := s.DB.Model(&model.Device{}).Where("serial_number = ?", device.SerialNumber).Count(&count).Error; err != nil {
+	exists, err := existsByQuery(s.DB, &model.Device{}, "serial_number = ?", device.SerialNumber)
+	if err != nil {
 		return err
 	}
-	if count > 0 {
+	if exists {
 		return errors.New("设备序列号已存在")
 	}
 
@@ -106,18 +118,18 @@ func (s *DeviceService) CreateDevice(device *model.Device) error {
 
 // 4 UpdateDevice 更新设备信息
 func (s *DeviceService) UpdateDevice(id uint, updates map[string]interface{}) (*model.Device, error) {
-	device, err := s.GetDeviceByID(id)
+	device, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return nil, err
 	}
 
 	// 如果更新序列号，需要检查唯一性
 	if serialNumber, ok := updates["serial_number"].(string); ok && serialNumber != device.SerialNumber {
-		var count int64
-		if err := s.DB.Model(&model.Device{}).Where("serial_number = ? AND id != ?", serialNumber, id).Count(&count).Error; err != nil {
+		exists, err := existsByQuery(s.DB, &model.Device{}, "serial_number = ? AND id != ?", serialNumber, id)
+		if err != nil {
 			return nil, err
 		}
-		if count > 0 {
+		if exists {
 			return nil, errors.New("设备序列号已存在")
 		}
 	}
@@ -132,7 +144,7 @@ func (s *DeviceService) UpdateDevice(id uint, updates map[string]interface{}) (*
 
 // 5 DeleteDevice 删除设备
 func (s *DeviceService) DeleteDevice(id uint) error {
-	device, err := s.GetDeviceByID(id)
+	device, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return err
 	}
@@ -144,7 +156,7 @@ func (s *DeviceService) DeleteDevice(id uint) error {
 
 // 6 GetDeviceStatus 获取设备状态 (TODO: 硬件集成)
 func (s *DeviceService) GetDeviceStatus(id uint) (string, error) {
-	device, err := s.GetDeviceByID(id)
+	device, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +166,7 @@ func (s *DeviceService) GetDeviceStatus(id uint) (string, error) {
 
 // 7 UpdateDeviceConfiguration 更新设备配置 (TODO: 硬件集成)
 func (s *DeviceService) UpdateDeviceConfiguration(id uint, config map[string]interface{}) error {
-	_, err := s.GetDeviceByID(id)
+	_, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return err
 	}
@@ -164,7 +176,7 @@ func (s *DeviceService) UpdateDeviceConfiguration(id uint, config map[string]int
 
 // 8 RebootDevice 重启设备 (TODO: 硬件集成)
 func (s *DeviceService) RebootDevice(id uint) error {
-	_, err := s.GetDeviceByID(id)
+	_, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return err
 	}
@@ -174,7 +186,7 @@ func (s *DeviceService) RebootDevice(id uint) error {
 
 // 9 UnlockDevice 远程开门 (TODO: 硬件集成)
 func (s *DeviceService) UnlockDevice(id uint) error {
-	_, err := s.GetDeviceByID(id)
+	_, err := s.getDeviceBaseByID(id)
 	if err != nil {
 		return err
 	}
@@ -185,7 +197,7 @@ func (s *DeviceService) UnlockDevice(id uint) error {
 // 10 GetDeviceHouseholds 获取设备关联的户号
 func (s *DeviceService) GetDeviceHouseholds(deviceID uint) ([]model.Household, error) {
 	// 检查设备是否存在
-	device, err := s.GetDeviceByID(deviceID)
+	device, err := s.getDeviceBaseByID(deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +221,7 @@ func (s *DeviceService) GetDeviceHouseholds(deviceID uint) ([]model.Household, e
 // 11 GetDeviceBuilding 获取设备所属的楼号
 func (s *DeviceService) GetDeviceBuilding(deviceID uint) (*model.Building, error) {
 	// 检查设备是否存在
-	device, err := s.GetDeviceByID(deviceID)
+	device, err := s.getDeviceBaseByID(deviceID)
 	if err != nil {
 		return nil, err
 	}
