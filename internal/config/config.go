@@ -28,7 +28,8 @@ type Config struct {
 	DBMigrationMode string // 数据库迁移模式: "auto"(默认), "alter"(修改), "drop"(删除重建)
 
 	// Server
-	ServerPort string
+	ServerPort         string
+	CORSAllowedOrigins []string
 
 	// Redis
 	RedisHost string
@@ -94,6 +95,8 @@ func LoadConfig() *Config {
 
 		// Server config
 		ServerPort: getEnv(prefix+"SERVER_PORT", getEnv("SERVER_PORT", "8080")),
+		CORSAllowedOrigins: parseCSV(getEnv("CORS_ALLOWED_ORIGINS",
+			"http://localhost:5173,http://localhost:20033,https://intercom.skylinedances.com,https://intercom.api.skylinedances.com")),
 
 		// Redis config
 		RedisHost: getEnv(prefix+"REDIS_HOST", getEnv("	REDIS_HOST", "localhost")),
@@ -149,6 +152,18 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func parseCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 // Helper function to get environment variable as integer with default value

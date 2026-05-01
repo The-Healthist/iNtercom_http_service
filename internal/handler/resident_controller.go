@@ -1,9 +1,11 @@
-﻿package handler
+package handler
 
 import (
+	"strings"
+
+	"intercom_http_service/internal/errcode"
 	"intercom_http_service/internal/model"
 	"intercom_http_service/internal/service"
-	"intercom_http_service/internal/errcode"
 	"net/http"
 	"strconv"
 
@@ -37,7 +39,7 @@ func NewResidentController(ctx *gin.Context, container *service.ServiceContainer
 type ResidentRequest struct {
 	Name        string `json:"name" binding:"required" example:"张三"`
 	Email       string `json:"email" binding:"omitempty,email" example:"zhangsan@resident.com"`
-	Phone       string `json:"phone" binding:"required" example:"13812345678"`
+	Phone       string `json:"phone" binding:"omitempty,numeric" example:"13812345678"`
 	HouseholdID uint   `json:"household_id" binding:"required" example:"1"` // 必填，关联的户号ID
 }
 
@@ -45,7 +47,7 @@ type ResidentRequest struct {
 type UpdateResidentRequest struct {
 	Name        string `json:"name" example:"李四"`
 	Email       string `json:"email" binding:"omitempty,email" example:"lisi@resident.com"`
-	Phone       string `json:"phone" example:"13987654321"`
+	Phone       string `json:"phone" binding:"omitempty,numeric" example:"13987654321"`
 	HouseholdID *uint  `json:"household_id" example:"1"` // 可选，关联的户号ID，使用指针允许设置为null
 }
 
@@ -137,7 +139,7 @@ func (c *ResidentController) GetResident() {
 // @Tags         Resident
 // @Accept       json
 // @Produce      json
-// @Param        request body ResidentRequest true "居民信息 - 姓名、电话和户号ID为必填，邮箱可选"
+// @Param        request body ResidentRequest true "居民信息 - 姓名和户号ID为必填，手机号可选但只能包含数字"
 // @Security     BearerAuth
 // @Success      201  {object}  map[string]interface{} "成功响应，包含创建的居民详情"
 // @Failure      400  {object}  ErrorResponse "请求错误，户号不存在或电话号码已被使用"
@@ -154,7 +156,7 @@ func (c *ResidentController) CreateResident() {
 	resident := &model.Resident{
 		Name:        req.Name,
 		Email:       req.Email,
-		Phone:       req.Phone,
+		Phone:       strings.TrimSpace(req.Phone),
 		HouseholdID: req.HouseholdID,
 		// 密码将在 ResidentService 中处理
 	}
@@ -215,9 +217,7 @@ func (c *ResidentController) UpdateResident() {
 	if req.Email != "" {
 		updates["email"] = req.Email
 	}
-	if req.Phone != "" {
-		updates["phone"] = req.Phone
-	}
+	updates["phone"] = strings.TrimSpace(req.Phone)
 	if req.HouseholdID != nil {
 		updates["household_id"] = *req.HouseholdID
 	}

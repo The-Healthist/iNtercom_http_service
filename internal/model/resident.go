@@ -5,7 +5,7 @@ type Resident struct {
 	BaseModel
 	Name        string `gorm:"type:varchar(50);not null" json:"name"`
 	Email       string `gorm:"type:varchar(100)" json:"email"`
-	Phone       string `gorm:"type:varchar(20);not null;uniqueIndex" json:"phone"`
+	Phone       string `gorm:"type:text" json:"phone"`
 	Password    string `gorm:"type:varchar(100);not null" json:"-"` // 不在JSON中暴露密码
 	HouseholdID uint   `gorm:"index" json:"household_id"`           // 关联的户号ID
 

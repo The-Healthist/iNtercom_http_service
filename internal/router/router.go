@@ -18,7 +18,11 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	// 添加 CORS 中间件
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:20033")
+		origin := c.GetHeader("Origin")
+		if isAllowedOrigin(origin, cfg.CORSAllowedOrigins) {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
@@ -41,6 +45,19 @@ func SetupRouter(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	// 注册路由
 	registerRoutes(r, serviceContainer)
 	return r
+}
+
+func isAllowedOrigin(origin string, allowedOrigins []string) bool {
+	if origin == "" {
+		return false
+	}
+
+	for _, allowedOrigin := range allowedOrigins {
+		if allowedOrigin == "*" || allowedOrigin == origin {
+			return true
+		}
+	}
+	return false
 }
 
 // registerRoutes 配置所有API路由
@@ -107,6 +124,7 @@ func registerAuthenticatedRoutes(
 
 	// 添加通用限流中间件 - 每秒30个请求，最多突发50个请求
 	auth.Use(middleware.IPRateLimiter(30, 50))
+	auth.Use(middleware.PurgeCacheAfterWrite())
 
 	// 管理员路由
 	adminGroup := auth.Group("/admin")
@@ -171,8 +189,8 @@ func registerAuthenticatedRoutes(
 
 	// 楼号路由
 	buildingGroup := auth.Group("/buildings")
-	buildingGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 5 * time.Minute}), handler.HandleBuildingFunc(container, "getBuildings"))
-	buildingGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 5 * time.Minute}), handler.HandleBuildingFunc(container, "getBuilding"))
+	buildingGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 30 * time.Second}), handler.HandleBuildingFunc(container, "getBuildings"))
+	buildingGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 30 * time.Second}), handler.HandleBuildingFunc(container, "getBuilding"))
 	buildingGroup.POST("", handler.HandleBuildingFunc(container, "createBuilding"))
 	buildingGroup.PUT("/:id", handler.HandleBuildingFunc(container, "updateBuilding"))
 	buildingGroup.DELETE("/:id", handler.HandleBuildingFunc(container, "deleteBuilding"))
@@ -185,8 +203,8 @@ func registerAuthenticatedRoutes(
 
 	// 户号路由
 	householdGroup := auth.Group("/households")
-	householdGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 5 * time.Minute}), handler.HandleHouseholdFunc(container, "getHouseholds"))
-	householdGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 5 * time.Minute}), handler.HandleHouseholdFunc(container, "getHousehold"))
+	householdGroup.GET("", middleware.Cache(middleware.CacheConfig{Expiration: 30 * time.Second}), handler.HandleHouseholdFunc(container, "getHouseholds"))
+	householdGroup.GET("/:id", middleware.Cache(middleware.CacheConfig{Expiration: 30 * time.Second}), handler.HandleHouseholdFunc(container, "getHousehold"))
 	householdGroup.POST("", handler.HandleHouseholdFunc(container, "createHousehold"))
 	householdGroup.PUT("/:id", handler.HandleHouseholdFunc(container, "updateHousehold"))
 	householdGroup.DELETE("/:id", handler.HandleHouseholdFunc(container, "deleteHousehold"))

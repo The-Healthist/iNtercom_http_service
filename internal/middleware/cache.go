@@ -1,4 +1,4 @@
-﻿package middleware
+package middleware
 
 import (
 	"bytes"
@@ -220,6 +220,22 @@ func PurgeCache() {
 	cache.Lock()
 	cache.items = make(map[string]cacheEntry)
 	cache.Unlock()
+}
+
+// PurgeCacheAfterWrite clears cached GET responses after successful mutations.
+// Admin pages must reflect create/update/delete results immediately.
+func PurgeCacheAfterWrite() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+
+		switch c.Request.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			status := c.Writer.Status()
+			if status >= http.StatusOK && status < http.StatusBadRequest {
+				PurgeCache()
+			}
+		}
+	}
 }
 
 // PurgeCacheByPrefix 根据前缀清除缓存

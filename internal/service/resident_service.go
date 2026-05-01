@@ -69,13 +69,15 @@ func (s *ResidentService) getResidentBaseByID(id uint) (*model.Resident, error) 
 
 // 3 CreateResident 创建新居民
 func (s *ResidentService) CreateResident(resident *model.Resident) error {
-	// 验证手机号唯一性
-	exists, err := existsByQuery(s.DB, &model.Resident{}, "phone = ?", resident.Phone)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return errors.New("手机号已被使用")
+	// 手机号可选；填写时才校验唯一性。
+	if resident.Phone != "" {
+		exists, err := existsByQuery(s.DB, &model.Resident{}, "phone = ?", resident.Phone)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return errors.New("手机号已被使用")
+		}
 	}
 
 	// 验证户号是否存在
@@ -102,7 +104,7 @@ func (s *ResidentService) UpdateResident(id uint, updates map[string]interface{}
 	}
 
 	// 如果更新手机号，需要检查唯一性
-	if phone, ok := updates["phone"].(string); ok && phone != resident.Phone {
+	if phone, ok := updates["phone"].(string); ok && phone != "" && phone != resident.Phone {
 		exists, err := existsByQuery(s.DB, &model.Resident{}, "phone = ? AND id != ?", phone, id)
 		if err != nil {
 			return nil, err

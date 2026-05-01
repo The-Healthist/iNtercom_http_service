@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"fmt"
@@ -67,6 +67,9 @@ func main() {
 		if err := autoMigrate(db); err != nil {
 			log.Fatalf("自动迁移失败: %v", err)
 		}
+		if err := ensureResidentPhoneOptional(db); err != nil {
+			log.Fatalf("居民手机号字段迁移失败: %v", err)
+		}
 	}
 
 	// 确保系统中有管理员账户
@@ -124,6 +127,51 @@ func autoMigrate(db *gorm.DB) error {
 	}
 
 	fmt.Println("Database migration completed")
+	return nil
+}
+
+// ensureResidentPhoneOptional keeps old deployments compatible after making
+// resident phone optional. AutoMigrate will not relax NOT NULL or remove a
+// unique index, so do it explicitly and idempotently.
+func ensureResidentPhoneOptional(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+
+	if _, err := sqlDB.Exec("ALTER TABLE residents MODIFY COLUMN phone TEXT NULL"); err != nil {
+		return err
+	}
+
+	rows, err := sqlDB.Query(`
+		SELECT INDEX_NAME
+		FROM INFORMATION_SCHEMA.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'residents'
+		  AND COLUMN_NAME = 'phone'
+		GROUP BY INDEX_NAME
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var indexName string
+		if err := rows.Scan(&indexName); err != nil {
+			return err
+		}
+		if indexName == "" {
+			continue
+		}
+		if _, err := sqlDB.Exec(fmt.Sprintf("ALTER TABLE residents DROP INDEX `%s`", indexName)); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -43,9 +43,9 @@ func NewBuildingController(ctx *gin.Context, container *service.ServiceContainer
 
 // BuildingRequest 表示楼号请求
 type BuildingRequest struct {
-	BuildingName string `json:"building_name" binding:"required" example:"1号楼"`
-	BuildingCode string `json:"building_code" binding:"required" example:"B001"`
-	Address      string `json:"address" example:"小区东南角"`
+	BuildingName string `json:"building_name" binding:"required,max=50" example:"1号楼"`
+	BuildingCode string `json:"building_code" binding:"required,max=20" example:"B001"`
+	Address      string `json:"address" binding:"max=200" example:"小区东南角"`
 	Status       string `json:"status" example:"active"` // active, inactive
 }
 

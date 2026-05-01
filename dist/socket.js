@@ -1,1 +1,0 @@
-/Users/yangliu/Documents/Code/mcp-figma/dist/socket.js
